@@ -49,10 +49,8 @@
   <span id="currentTime" style="font-size:13px;"></span>
 </div>
 
-<div class="tabs">
-  <button class="tab active" onclick="switchTab('pos')">🛒 会計</button>
-  <button class="tab" onclick="switchTab('stock')">🔍 在庫確認</button>
-  <button class="tab" onclick="switchTab('history')">📋 会計履歴</button>
+<div class="tabs" id="tabBar">
+  <!-- タブはJS側で動的に生成 -->
 </div>
 
 <!-- ===== 会計タブ ===== -->
@@ -154,6 +152,9 @@ document.addEventListener('DOMContentLoaded', function() {
   var urlParams = new URLSearchParams(window.location.search);
   var isPCMode = urlParams.get('pw') === PC_PASSWORD;
 
+  // switchTabをグローバルに公開（タブのonclickより先に定義が必要）
+  window.switchTab = switchTab;
+
   // ==================== タブ初期化 ====================
   var tabBar = document.getElementById('tabBar');
   if (isPCMode) {
@@ -178,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('tab-stock').classList.remove('hidden');
     document.getElementById('tab-history').classList.add('hidden');
   }
- 
+
   // ==================== 状態管理 ====================
   var cart = [];
   var pendingItemCode = null;
@@ -204,7 +205,11 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('stockSearchInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') searchStock(); });
 
   // 初期フォーカス
-  document.getElementById('itemCodeInput').focus();
+  if (isPCMode) {
+    document.getElementById('itemCodeInput').focus();
+  } else {
+    document.getElementById('stockSearchInput').focus();
+  }
 
   // ==================== タブ切り替え ====================
   function switchTab(tab) {
@@ -218,7 +223,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (tab === 'stock') document.getElementById('stockSearchInput').focus();
     if (tab === 'pos') document.getElementById('itemCodeInput').focus();
   }
-  window.switchTab = switchTab;
 
   // ==================== 会計処理 ====================
 
@@ -449,4 +453,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
