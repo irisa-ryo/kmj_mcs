@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.warehouse_code === result.data.warehouse_code; });
+    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
     if (existing) {
       existing.quantity++;
     } else {
@@ -353,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
       .select('*').eq('item_code', itemCode).eq('store_code', warehouseCode).single();
     if (result.error || !result.data) { alert('商品が見つかりません'); return; }
 
-    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.warehouse_code === result.data.warehouse_code; });
+    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
     if (existing) { existing.quantity += qty; } else {
       cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: result.data.unit_price, quantity: qty });
     }
