@@ -447,7 +447,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== CSVエクスポート ====================
   async function exportCSV() {
-    addLog && null;
     var result = await db.from('transactions').select('*, transaction_items(*)').order('completed_at', { ascending: true });
     if (result.error || !result.data || !result.data.length) {
       alert('エクスポートできる履歴がありません');
