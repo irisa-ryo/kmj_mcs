@@ -26,24 +26,21 @@
 </div>
 
 <div class="content">
-  <!-- パスワードなしの場合はこのメッセージを表示 -->
   <div id="lockedMessage" class="card locked hidden">
     🔒 このページにアクセスする権限がありません。
   </div>
 
-  <!-- パスワードありの場合はこのコンテンツを表示 -->
   <div id="mainContent" class="hidden">
     <div class="card">
       <h2 style="margin-bottom:12px;">在庫CSVアップロード</h2>
       <p style="margin-bottom:12px; color:#666; font-size:14px;">
         CSVフォーマット（1行目はヘッダ行）：<br>
-        <code>倉庫コード,品番,品名,数量,商品単価</code>
+        <code>店舗コード,店舗名,品番,品名,数量,商品単価</code>
       </p>
       <input type="file" id="csvFile" accept=".csv"><br>
       <button class="btn-success" id="btnUpload">⬆️ アップロード</button>
       <button class="btn-primary" id="btnTest">接続テスト</button>
     </div>
-
     <pre id="log">ここにログが表示されます</pre>
   </div>
 </div>
@@ -55,35 +52,28 @@ document.addEventListener('DOMContentLoaded', function() {
   // ==================== パスワード設定 ====================
   // ★pos_system.htmlのPC_PASSWORDと同じ値にしてください
   var UPLOAD_PASSWORD = 'kmj11111';
-
-  // URLパラメータでパスワードチェック（例: upload_csv.html?pw=kmj11111）
   var urlParams = new URLSearchParams(window.location.search);
   var isAllowed = urlParams.get('pw') === UPLOAD_PASSWORD;
 
   if (!isAllowed) {
     document.getElementById('lockedMessage').classList.remove('hidden');
-    return; // 以降の処理をすべて停止
+    return;
   }
-
-  // パスワードOKの場合はメインコンテンツを表示し、ロックメッセージを非表示にする
   document.getElementById('lockedMessage').classList.add('hidden');
   document.getElementById('mainContent').classList.remove('hidden');
 
   // ==================== Supabase設定 ====================
-  const SUPABASE_URL = 'https://exvbrwcpaoxxatokqfta.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmJyd2NwYW94eGF0b2txZnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MTgyNDQsImV4cCI6MjA4Njk5NDI0NH0.HmrY7SWbWvJhzao1L4270YHK0ypE4HQXvCh3Z50uH18';
-
+  const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+  const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   var log = document.getElementById('log');
-
   document.getElementById('btnTest').addEventListener('click', testConnection);
   document.getElementById('btnUpload').addEventListener('click', uploadCSV);
 
   function addLog(msg) {
     if (log.textContent === 'ここにログが表示されます') log.textContent = '';
     log.textContent += msg + '\n';
-    console.log(msg);
   }
 
   async function testConnection() {
@@ -102,105 +92,79 @@ document.addEventListener('DOMContentLoaded', function() {
     log.textContent = '';
     var file = document.getElementById('csvFile').files[0];
     if (!file) { addLog('❌ ファイルを選択してください'); return; }
-
     addLog('ファイル読み込み中: ' + file.name);
 
     var text;
-    try {
-      text = await file.text();
-    } catch(e) {
-      addLog('❌ ファイル読み込みエラー: ' + e.message);
-      return;
-    }
+    try { text = await file.text(); }
+    catch(e) { addLog('❌ 読み込みエラー: ' + e.message); return; }
 
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     var lines = text.trim().split('\n');
-
-    if (lines.length < 2) { addLog('❌ CSVにデータがありません（ヘッダ行のみ）'); return; }
+    if (lines.length < 2) { addLog('❌ データがありません'); return; }
 
     addLog('ヘッダ: ' + lines[0]);
     addLog('データ行数: ' + (lines.length - 1) + '行');
 
-    var rows = [];
-    var errors = [];
+    var rows = [], errors = [];
     for (var i = 1; i < lines.length; i++) {
       var line = lines[i].trim();
       if (!line) continue;
-
       var cols = parseCSVLine(line);
-      if (cols.length < 5) { errors.push('行' + (i+1) + ': カラム数不足 → ' + line); continue; }
+      // 店舗コード,店舗名,品番,品名,数量,商品単価 の6列
+      if (cols.length < 6) { errors.push('行' + (i+1) + ': カラム数不足（6列必要）→ ' + line); continue; }
 
-      var warehouse_code = cols[0].trim().replace(/^"|"$/g, '');
-      var item_code      = cols[1].trim().replace(/^"|"$/g, '');
-      var item_name      = cols[2].trim().replace(/^"|"$/g, '');
-      var quantity       = cols[3].trim().replace(/^"|"$/g, '');
-      var unit_price     = cols[4].trim().replace(/^"|"$/g, '');
-      var qty   = parseInt(quantity);
-      var price = parseInt(unit_price);
+      var store_code = cols[0].trim().replace(/^"|"$/g, '');
+      var store_name = cols[1].trim().replace(/^"|"$/g, '');
+      var item_code  = cols[2].trim().replace(/^"|"$/g, '');
+      var item_name  = cols[3].trim().replace(/^"|"$/g, '');
+      var qty        = parseInt(cols[4].trim().replace(/^"|"$/g, ''));
+      var price      = parseInt(cols[5].trim().replace(/^"|"$/g, ''));
 
-      if (isNaN(qty) || isNaN(price)) {
-        errors.push('行' + (i+1) + ': 数値変換エラー（数量="' + quantity + '", 単価="' + unit_price + '"）');
-        continue;
-      }
-      rows.push({ warehouse_code: warehouse_code, item_code: item_code, item_name: item_name, quantity: qty, unit_price: price });
+      if (isNaN(qty) || isNaN(price)) { errors.push('行' + (i+1) + ': 数値変換エラー'); continue; }
+      rows.push({ store_code: store_code, store_name: store_name, item_code: item_code, item_name: item_name, quantity: qty, unit_price: price });
     }
 
-    if (errors.length > 0) {
-      addLog('\n⚠️ パースエラーの行:');
-      errors.forEach(function(e) { addLog('  ' + e); });
-    }
-
+    if (errors.length > 0) { addLog('\n⚠️ エラー行:'); errors.forEach(function(e) { addLog('  ' + e); }); }
     if (rows.length === 0) { addLog('❌ アップロードできるデータがありません'); return; }
 
-    // 重複除去
+    // 重複除去（店舗コード + 品番 をキーに）
     var uniqueMap = {};
-    rows.forEach(function(r) { uniqueMap[r.warehouse_code + '___' + r.item_code] = r; });
+    rows.forEach(function(r) { uniqueMap[r.store_code + '___' + r.item_code] = r; });
     var uniqueRows = Object.values(uniqueMap);
     if (uniqueRows.length < rows.length) {
-      addLog('⚠️ 重複行を除去: ' + (rows.length - uniqueRows.length) + '件 → ' + uniqueRows.length + '件に整理');
+      addLog('⚠️ 重複除去: ' + rows.length + '件 → ' + uniqueRows.length + '件');
     }
 
     addLog('\nアップロード開始: ' + uniqueRows.length + '件');
     addLog('プレビュー（先頭3件）:');
     uniqueRows.slice(0, 3).forEach(function(r, i) { addLog('  ' + (i+1) + ': ' + JSON.stringify(r)); });
 
-    var chunkSize = 50;
-    var successCount = 0;
+    var chunkSize = 50, successCount = 0;
     for (var j = 0; j < uniqueRows.length; j += chunkSize) {
       var chunk = uniqueRows.slice(j, j + chunkSize);
-      var result = await db.from('inventory').upsert(chunk, { onConflict: 'warehouse_code,item_code' });
-      if (result.error) {
-        addLog('❌ アップロードエラー: ' + result.error.message);
-        addLog('詳細: ' + JSON.stringify(result.error));
-        return;
-      }
+      var result = await db.from('inventory').upsert(chunk, { onConflict: 'store_code,item_code' });
+      if (result.error) { addLog('❌ エラー: ' + result.error.message + '\n' + JSON.stringify(result.error)); return; }
       successCount += chunk.length;
       addLog('進捗: ' + successCount + '/' + uniqueRows.length + '件完了');
     }
-
     addLog('\n✅ アップロード完了！合計' + successCount + '件登録しました');
   }
 
   function parseCSVLine(line) {
-    var result = [];
-    var current = '';
-    var inQuotes = false;
+    var result = [], current = '', inQuotes = false;
     for (var i = 0; i < line.length; i++) {
       var ch = line[i];
       if (ch === '"') {
         if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
         else { inQuotes = !inQuotes; }
-      } else if (ch === ',' && !inQuotes) {
-        result.push(current); current = '';
-      } else {
-        current += ch;
-      }
+      } else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+      else { current += ch; }
     }
     result.push(current);
     return result;
   }
 
-}); // DOMContentLoaded終わり
+});
 </script>
 </body>
 </html>
