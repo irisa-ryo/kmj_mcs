@@ -483,15 +483,12 @@ document.addEventListener('DOMContentLoaded', function() {
       return row.map(function(cell) {
         var str = String(cell);
         // カンマや改行を含む場合はダブルクォートで囲む
-        if (str.includes(',') || str.includes('
-') || str.includes('"')) {
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
           str = '"' + str.replace(/"/g, '""') + '"';
         }
         return str;
       }).join(',');
-    }).join('
-');
-
+    }).join('\n');
     // ダウンロード
     var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);
