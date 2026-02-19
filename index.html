@@ -146,6 +146,39 @@ document.addEventListener('DOMContentLoaded', function() {
   // 変数名をdbに統一（supabaseはライブラリ自身が使用するため）
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  // ==================== PC用パスワード設定 ====================
+  // ★このパスワードを変更することでPC用URLのパスワードを変更できます
+  var PC_PASSWORD = '1234';
+
+  // URLパラメータからパスワードを取得（例: index.html?pw=1234）
+  var urlParams = new URLSearchParams(window.location.search);
+  var isPCMode = urlParams.get('pw') === PC_PASSWORD;
+
+  // ==================== タブ初期化 ====================
+  var tabBar = document.getElementById('tabBar');
+  if (isPCMode) {
+    // PCモード：会計・在庫確認・会計履歴 すべて表示
+    tabBar.innerHTML =
+      '<button class="tab active" onclick="switchTab('pos')">🛒 会計</button>' +
+      '<button class="tab" onclick="switchTab('stock')">🔍 在庫確認</button>' +
+      '<button class="tab" onclick="switchTab('history')">📋 会計履歴</button>';
+    document.getElementById('tab-pos').classList.remove('hidden');
+    document.getElementById('tab-stock').classList.add('hidden');
+    document.getElementById('tab-history').classList.add('hidden');
+    // ヘッダにPCモードバッジを表示
+    document.querySelector('.header span').insertAdjacentHTML(
+      'afterend',
+      '<span style="background:#27ae60;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">PCモード</span>'
+    );
+  } else {
+    // スマホモード：在庫確認タブのみ表示
+    tabBar.innerHTML =
+      '<button class="tab active" onclick="switchTab('stock')">🔍 在庫確認</button>';
+    document.getElementById('tab-pos').classList.add('hidden');
+    document.getElementById('tab-stock').classList.remove('hidden');
+    document.getElementById('tab-history').classList.add('hidden');
+  }
+ 
   // ==================== 状態管理 ====================
   var cart = [];
   var pendingItemCode = null;
@@ -416,3 +449,4 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
+
