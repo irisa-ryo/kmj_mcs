@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>イベント販売管理システム</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Sans', sans-serif; background: #f0f4f8; }
+  .header { background: #2c3e50; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+  .tabs { display: flex; background: #34495e; }
+  .tab { padding: 12px 24px; color: #bdc3c7; cursor: pointer; border: none; background: none; font-size: 14px; }
+  .tab.active { background: #f0f4f8; color: #2c3e50; font-weight: bold; }
+  .content { padding: 20px; max-width: 900px; margin: 0 auto; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .input-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  input[type=text], input[type=number] { padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; flex: 1; }
+  input:focus { border-color: #3498db; outline: none; }
+  button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+  .btn-primary { background: #3498db; color: white; }
+  .btn-success { background: #27ae60; color: white; font-size: 18px; padding: 14px 28px; width: 100%; }
+  .btn-danger { background: #e74c3c; color: white; }
+  .btn-warning { background: #f39c12; color: white; }
+  .btn-gray { background: #95a5a6; color: white; }
+  button:active { opacity: 0.8; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #2c3e50; color: white; padding: 10px; text-align: left; }
+  td { padding: 10px; border-bottom: 1px solid #eee; }
+  tr:hover td { background: #f8f9fa; }
+  .total-area { background: #2c3e50; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 16px; }
+  .total-amount { font-size: 36px; font-weight: bold; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+  .badge-ok { background: #27ae60; color: white; }
+  .badge-ng { background: #e74c3c; color: white; }
+  .hidden { display: none; }
+  .scan-mode { background: #fff3cd; border: 2px solid #ffc107; padding: 12px; border-radius: 6px; margin-bottom: 12px; }
+  .alert { padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+  .alert-error { background: #fdecea; border: 1px solid #e74c3c; color: #c0392b; }
+  .alert-success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
+  #stockResult { margin-top: 16px; }
+  .stock-item { padding: 12px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #3498db; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span>📦 イベント販売管理システム</span>
+  <span id="currentTime" style="font-size:13px;"></span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('pos')">🛒 会計</button>
+  <button class="tab" onclick="switchTab('stock')">🔍 在庫確認</button>
+  <button class="tab" onclick="switchTab('history')">📋 会計履歴</button>
+</div>
+
+<!-- ===== 会計タブ ===== -->
+<div id="tab-pos" class="content">
+
+  <div class="total-area">
+    <div style="font-size:14px; margin-bottom:4px;">合計金額</div>
+    <div class="total-amount">¥<span id="totalAmount">0</span></div>
+    <div style="font-size:13px; margin-top:4px;"><span id="itemCount">0</span>点</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px;">商品スキャン</h3>
+    <div id="scanStep1" class="scan-mode">
+      <div style="font-size:13px; color:#856404; margin-bottom:8px;">【STEP 1】品番バーコードをスキャン または入力</div>
+      <div class="input-row">
+        <input type="text" id="itemCodeInput" placeholder="品番（バーコード or 手入力）">
+        <button class="btn-primary" id="btnConfirmItem">確定</button>
+      </div>
+    </div>
+    <div id="scanStep2" class="scan-mode hidden" style="background:#d4edda; border-color:#28a745;">
+      <div style="font-size:13px; color:#155724; margin-bottom:8px;">【STEP 2】倉庫QRコードをスキャン</div>
+      <div id="scannedItemInfo" style="margin-bottom:8px; font-weight:bold;"></div>
+      <div class="input-row">
+        <input type="text" id="warehouseCodeInput" placeholder="倉庫コード（QRコード or 手入力）">
+        <button class="btn-primary" id="btnAddItem">追加</button>
+      </div>
+      <button class="btn-gray" id="btnCancelStep2" style="margin-top:4px;">← 品番入力に戻る</button>
+    </div>
+    <div id="scanMessage"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3>カート</h3>
+      <button class="btn-warning" id="btnToggleManual">手動入力モード</button>
+    </div>
+
+    <div id="manualInputArea" class="hidden" style="background:#fff3cd; padding:12px; border-radius:6px; margin-bottom:12px;">
+      <h4 style="margin-bottom:8px;">手動入力</h4>
+      <div class="input-row">
+        <input type="text" id="manualItemCode" placeholder="品番">
+        <input type="text" id="manualWarehouseCode" placeholder="倉庫コード">
+        <input type="number" id="manualQty" placeholder="数量" value="1" style="width:80px; flex:none;">
+        <button class="btn-primary" id="btnManualAdd">追加</button>
+      </div>
+    </div>
+
+    <table id="cartTable">
+      <thead><tr><th>倉庫</th><th>品番</th><th>品名</th><th>単価</th><th>数量</th><th>小計</th><th>削除</th></tr></thead>
+      <tbody id="cartBody"></tbody>
+    </table>
+    <div style="margin-top:12px; text-align:right; font-size:13px; color:#666;" id="cartEmpty">商品がスキャンされていません</div>
+  </div>
+
+  <button class="btn-success" id="btnComplete">✅ 会計終了（決済完了後に押す）</button>
+  <button class="btn-danger" id="btnClearCart" style="width:100%; margin-top:10px;">🗑️ カートをリセット</button>
+</div>
+
+<!-- ===== 在庫確認タブ ===== -->
+<div id="tab-stock" class="content hidden">
+  <div class="card">
+    <h3 style="margin-bottom:12px;">在庫検索</h3>
+    <div class="input-row">
+      <input type="text" id="stockSearchInput" placeholder="品番をスキャン or 入力">
+      <button class="btn-primary" id="btnStockSearch">検索</button>
+    </div>
+  </div>
+  <div id="stockResult"></div>
+</div>
+
+<!-- ===== 会計履歴タブ ===== -->
+<div id="tab-history" class="content hidden">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3>会計履歴</h3>
+      <button class="btn-primary" id="btnReloadHistory">🔄 更新</button>
+    </div>
+    <div id="historyList">読み込み中...</div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+  // ==================== Supabase設定 ====================
+  const SUPABASE_URL = 'https://exvbrwcpaoxxatokqfta.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmJyd2NwYW94eGF0b2txZnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MTgyNDQsImV4cCI6MjA4Njk5NDI0NH0.HmrY7SWbWvJhzao1L4270YHK0ypE4HQXvCh3Z50uH18';
+
+
+  // 変数名をdbに統一（supabaseはライブラリ自身が使用するため）
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ==================== 状態管理 ====================
+  var cart = [];
+  var pendingItemCode = null;
+
+  // ==================== 時計 ====================
+  setInterval(function() {
+    document.getElementById('currentTime').textContent = new Date().toLocaleString('ja-JP');
+  }, 1000);
+
+  // ==================== イベント登録 ====================
+  document.getElementById('btnConfirmItem').addEventListener('click', confirmItemCode);
+  document.getElementById('btnAddItem').addEventListener('click', addItem);
+  document.getElementById('btnCancelStep2').addEventListener('click', cancelStep2);
+  document.getElementById('btnToggleManual').addEventListener('click', toggleManualInput);
+  document.getElementById('btnManualAdd').addEventListener('click', manualAddItem);
+  document.getElementById('btnComplete').addEventListener('click', completeTransaction);
+  document.getElementById('btnClearCart').addEventListener('click', clearCart);
+  document.getElementById('btnStockSearch').addEventListener('click', searchStock);
+  document.getElementById('btnReloadHistory').addEventListener('click', loadHistory);
+
+  document.getElementById('itemCodeInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') confirmItemCode(); });
+  document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') addItem(); });
+  document.getElementById('stockSearchInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') searchStock(); });
+
+  // 初期フォーカス
+  document.getElementById('itemCodeInput').focus();
+
+  // ==================== タブ切り替え ====================
+  function switchTab(tab) {
+    ['pos','stock','history'].forEach(function(t) {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+    });
+    document.querySelectorAll('.tab').forEach(function(el, i) {
+      el.classList.toggle('active', ['pos','stock','history'][i] === tab);
+    });
+    if (tab === 'history') loadHistory();
+    if (tab === 'stock') document.getElementById('stockSearchInput').focus();
+    if (tab === 'pos') document.getElementById('itemCodeInput').focus();
+  }
+  window.switchTab = switchTab;
+
+  // ==================== 会計処理 ====================
+
+  async function confirmItemCode() {
+    var code = document.getElementById('itemCodeInput').value.trim();
+    if (!code) return;
+
+    var result = await db.from('inventory').select('*').eq('item_code', code).gt('quantity', 0);
+    if (result.error || !result.data || !result.data.length) {
+      showMessage('scanMessage', '品番 "' + code + '" の在庫が見つかりません', 'error');
+      return;
+    }
+
+    pendingItemCode = code;
+    document.getElementById('scannedItemInfo').textContent = '品番: ' + code;
+    document.getElementById('scanStep1').classList.add('hidden');
+    document.getElementById('scanStep2').classList.remove('hidden');
+    document.getElementById('warehouseCodeInput').value = '';
+    document.getElementById('warehouseCodeInput').focus();
+    clearMessage('scanMessage');
+  }
+
+  async function addItem() {
+    var warehouseCode = document.getElementById('warehouseCodeInput').value.trim();
+    if (!warehouseCode || !pendingItemCode) return;
+
+    var result = await db.from('inventory')
+      .select('*').eq('item_code', pendingItemCode).eq('warehouse_code', warehouseCode).single();
+
+    if (result.error || !result.data) {
+      showMessage('scanMessage', '倉庫 "' + warehouseCode + '" に品番 "' + pendingItemCode + '" の在庫がありません', 'error');
+      return;
+    }
+    if (result.data.quantity <= 0) {
+      showMessage('scanMessage', '在庫切れです', 'error');
+      return;
+    }
+
+    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.warehouse_code === result.data.warehouse_code; });
+    if (existing) {
+      existing.quantity++;
+    } else {
+      cart.push({ warehouse_code: result.data.warehouse_code, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: result.data.unit_price, quantity: 1 });
+    }
+
+    renderCart();
+    resetScanStep();
+    showMessage('scanMessage', '✅ ' + result.data.item_name + ' を追加しました', 'success');
+  }
+
+  function cancelStep2() {
+    resetScanStep();
+  }
+
+  function resetScanStep() {
+    pendingItemCode = null;
+    document.getElementById('itemCodeInput').value = '';
+    document.getElementById('warehouseCodeInput').value = '';
+    document.getElementById('scanStep1').classList.remove('hidden');
+    document.getElementById('scanStep2').classList.add('hidden');
+    document.getElementById('itemCodeInput').focus();
+  }
+
+  function renderCart() {
+    var tbody = document.getElementById('cartBody');
+    tbody.innerHTML = '';
+    var total = 0;
+    var count = 0;
+    cart.forEach(function(item, idx) {
+      var subtotal = item.unit_price * item.quantity;
+      total += subtotal;
+      count += item.quantity;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + item.warehouse_code + '</td>' +
+        '<td>' + item.item_code + '</td>' +
+        '<td>' + item.item_name + '</td>' +
+        '<td>¥' + item.unit_price.toLocaleString() + '</td>' +
+        '<td>' +
+          '<button onclick="changeQty(' + idx + ', -1)" style="padding:2px 8px;">-</button>' +
+          ' ' + item.quantity + ' ' +
+          '<button onclick="changeQty(' + idx + ', 1)" style="padding:2px 8px;">+</button>' +
+        '</td>' +
+        '<td>¥' + subtotal.toLocaleString() + '</td>' +
+        '<td><button class="btn-danger" onclick="removeItem(' + idx + ')" style="padding:4px 10px;">削除</button></td>';
+      tbody.appendChild(tr);
+    });
+    document.getElementById('totalAmount').textContent = total.toLocaleString();
+    document.getElementById('itemCount').textContent = count;
+    document.getElementById('cartEmpty').style.display = cart.length ? 'none' : 'block';
+  }
+
+  window.removeItem = function(idx) {
+    cart.splice(idx, 1);
+    renderCart();
+  };
+
+  window.changeQty = function(idx, delta) {
+    cart[idx].quantity += delta;
+    if (cart[idx].quantity <= 0) cart.splice(idx, 1);
+    renderCart();
+  };
+
+  function clearCart() {
+    if (!confirm('カートをリセットしますか？')) return;
+    cart = [];
+    renderCart();
+    resetScanStep();
+    clearMessage('scanMessage');
+  }
+
+  function toggleManualInput() {
+    document.getElementById('manualInputArea').classList.toggle('hidden');
+  }
+
+  async function manualAddItem() {
+    var itemCode = document.getElementById('manualItemCode').value.trim();
+    var warehouseCode = document.getElementById('manualWarehouseCode').value.trim();
+    var qty = parseInt(document.getElementById('manualQty').value) || 1;
+    if (!itemCode || !warehouseCode) { alert('品番と倉庫コードを入力してください'); return; }
+
+    var result = await db.from('inventory')
+      .select('*').eq('item_code', itemCode).eq('warehouse_code', warehouseCode).single();
+    if (result.error || !result.data) { alert('商品が見つかりません'); return; }
+
+    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.warehouse_code === result.data.warehouse_code; });
+    if (existing) { existing.quantity += qty; } else {
+      cart.push({ warehouse_code: result.data.warehouse_code, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: result.data.unit_price, quantity: qty });
+    }
+    renderCart();
+    document.getElementById('manualItemCode').value = '';
+    document.getElementById('manualWarehouseCode').value = '';
+  }
+
+  async function completeTransaction() {
+    if (cart.length === 0) { alert('カートが空です'); return; }
+    if (!confirm('¥' + document.getElementById('totalAmount').textContent + ' の会計を完了しますか？')) return;
+
+    var total = cart.reduce(function(sum, i) { return sum + i.unit_price * i.quantity; }, 0);
+
+    var txResult = await db.from('transactions').insert({ total_amount: total }).select().single();
+    if (txResult.error) { alert('会計登録に失敗しました: ' + txResult.error.message); return; }
+
+    var items = cart.map(function(i) {
+      return { transaction_id: txResult.data.id, warehouse_code: i.warehouse_code, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
+    });
+    await db.from('transaction_items').insert(items);
+
+    // 在庫減算
+    for (var j = 0; j < cart.length; j++) {
+      var item = cart[j];
+      await db.rpc('decrement_inventory', {
+        p_warehouse_code: item.warehouse_code,
+        p_item_code: item.item_code,
+        p_qty: item.quantity
+      });
+    }
+
+    alert('✅ 会計完了！\n取引ID: ' + txResult.data.id + '\n合計: ¥' + total.toLocaleString() + '\n' + new Date().toLocaleString('ja-JP'));
+    cart = [];
+    renderCart();
+    resetScanStep();
+  }
+
+  // ==================== 在庫確認 ====================
+  async function searchStock() {
+    var code = document.getElementById('stockSearchInput').value.trim();
+    if (!code) return;
+
+    var result = await db.from('inventory').select('*').eq('item_code', code).order('warehouse_code');
+    var el = document.getElementById('stockResult');
+
+    if (result.error || !result.data || !result.data.length) {
+      el.innerHTML = '<div class="alert alert-error">品番 "' + code + '" は見つかりませんでした</div>';
+      return;
+    }
+
+    var totalQty = result.data.reduce(function(s, r) { return s + r.quantity; }, 0);
+    var html = '<div class="card"><h3>' + result.data[0].item_name + '（' + code + '）</h3>';
+    html += '<p style="margin:8px 0;">合計在庫: <strong>' + totalQty + '点</strong></p>';
+    result.data.forEach(function(r) {
+      html += '<div class="stock-item">' +
+        '<span class="badge ' + (r.quantity > 0 ? 'badge-ok' : 'badge-ng') + '">' + (r.quantity > 0 ? '在庫あり' : '在庫なし') + '</span> ' +
+        '倉庫: <strong>' + r.warehouse_code + '</strong> ／ 残数: <strong>' + r.quantity + '点</strong>' +
+        '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  // ==================== 会計履歴 ====================
+  async function loadHistory() {
+    var result = await db.from('transactions').select('*, transaction_items(*)').order('completed_at', { ascending: false }).limit(50);
+    var el = document.getElementById('historyList');
+    if (result.error || !result.data) { el.innerHTML = 'データ取得エラー'; return; }
+    if (!result.data.length) { el.innerHTML = '会計履歴がありません'; return; }
+
+    el.innerHTML = result.data.map(function(tx) {
+      return '<div style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:10px;">' +
+        '<div style="display:flex; justify-content:space-between;">' +
+          '<strong>取引ID: ' + tx.id + '</strong>' +
+          '<span>¥' + tx.total_amount.toLocaleString() + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px; color:#666; margin:4px 0;">' + new Date(tx.completed_at).toLocaleString('ja-JP') + '</div>' +
+        '<details>' +
+          '<summary style="cursor:pointer; font-size:13px; color:#3498db;">明細を見る（' + tx.transaction_items.length + '点）</summary>' +
+          '<table style="margin-top:8px; font-size:13px; width:100%;">' +
+            '<tr><th>倉庫</th><th>品番</th><th>品名</th><th>単価</th><th>数量</th></tr>' +
+            tx.transaction_items.map(function(i) {
+              return '<tr><td>' + i.warehouse_code + '</td><td>' + i.item_code + '</td><td>' + i.item_name + '</td><td>¥' + i.unit_price.toLocaleString() + '</td><td>' + i.quantity + '</td></tr>';
+            }).join('') +
+          '</table>' +
+        '</details>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ==================== ユーティリティ ====================
+  function showMessage(id, msg, type) {
+    document.getElementById(id).innerHTML = '<div class="alert alert-' + type + '">' + msg + '</div>';
+    setTimeout(function() { clearMessage(id); }, 4000);
+  }
+  function clearMessage(id) {
+    document.getElementById(id).innerHTML = '';
+  }
+
+}); // DOMContentLoaded終わり
+</script>
+</body>
+</html>
