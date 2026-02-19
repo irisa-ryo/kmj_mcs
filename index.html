@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // ★このパスワードを変更することでPC用URLのパスワードを変更できます
   var PC_PASSWORD = 'kmj11111';
 
-  // URLパラメータからパスワードを取得（例: index.html?pw=kmj11111）
+  // URLパラメータからパスワードを取得（例: index.html?pw=1234）
   var urlParams = new URLSearchParams(window.location.search);
   var isPCMode = urlParams.get('pw') === PC_PASSWORD;
 
@@ -180,6 +180,8 @@ document.addEventListener('DOMContentLoaded', function() {
       'afterend',
       '<span style="background:#27ae60;color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">PCモード</span>'
     );
+    // PCモードではカメラスキャンボタンを非表示
+    document.getElementById('btnToggleCamera').style.display = 'none';
   } else {
     // スマホモード：在庫確認タブのみ表示
     tabBar.innerHTML =
@@ -408,10 +410,16 @@ document.addEventListener('DOMContentLoaded', function() {
     cameraArea.style.display = 'block';
     document.getElementById('btnToggleCamera').style.display = 'none';
 
-    html5QrCode = new Html5Qrcode('qr-reader');
+    html5QrCode = new Html5Qrcode('qr-reader', { verbose: false });
+    var config = {
+      fps: 15,
+      qrbox: { width: 280, height: 120 }, // バーコード用に横長に設定
+      formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_39 ], // CODE39に特化
+      aspectRatio: 2.0 // 横長アスペクト比でバーコードを読みやすく
+    };
     html5QrCode.start(
       { facingMode: 'environment' }, // 背面カメラを使用
-      { fps: 10, qrbox: { width: 250, height: 150 } },
+      config,
       function(decodedText) {
         // スキャン成功：品番フィールドに入力して検索実行
         document.getElementById('stockSearchInput').value = decodedText;
