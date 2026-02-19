@@ -64,7 +64,8 @@ document.addEventListener('DOMContentLoaded', function() {
     return; // 以降の処理をすべて停止
   }
 
-  // パスワードOKの場合はメインコンテンツを表示
+  // パスワードOKの場合はメインコンテンツを表示し、ロックメッセージを非表示にする
+  document.getElementById('lockedMessage').classList.add('hidden');
   document.getElementById('mainContent').classList.remove('hidden');
 
   // ==================== Supabase設定 ====================
