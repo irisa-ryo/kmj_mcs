@@ -397,24 +397,76 @@ document.addEventListener('DOMContentLoaded', function() {
     var code = document.getElementById('stockSearchInput').value.trim();
     if (!code) return;
 
-    var result = await db.from('inventory').select('*').eq('item_code', code).order('store_code');
     var el = document.getElementById('stockResult');
+    el.innerHTML = '<p style="color:#888; padding:10px;">検索中...</p>';
 
-    if (result.error || !result.data || !result.data.length) {
-      el.innerHTML = '<div class="alert alert-error">品番 "' + code + '" は見つかりませんでした</div>';
-      return;
+    // ① 同一品番を検索
+    var exactResult = await db.from('inventory').select('*').eq('item_code', code).order('store_code');
+
+    // ② 同型商品を前方一致で検索（品番の頭5文字）
+    var prefix = code.substring(0, 5);
+    var similarResult = await db.from('inventory').select('*').like('item_code', prefix + '%').neq('item_code', code).order('item_code').order('store_code');
+
+    var html = '';
+
+    // ===== 同一品番セクション =====
+    if (exactResult.error || !exactResult.data || !exactResult.data.length) {
+      html += '<div class="card">';
+      html += '<div class="alert alert-error" style="margin-bottom:0;">品番 "' + code + '" は見つかりませんでした</div>';
+      html += '</div>';
+    } else {
+      var totalQty = exactResult.data.reduce(function(s, r) { return s + r.quantity; }, 0);
+      var allZero = totalQty === 0;
+
+      html += '<div class="card">';
+      html += '<h3 style="margin-bottom:6px;">' + exactResult.data[0].item_name + '（' + code + '）</h3>';
+
+      if (allZero) {
+        html += '<div class="alert alert-error" style="margin:8px 0;">⚠️ この品番の在庫はすべて在庫切れです</div>';
+      } else {
+        html += '<p style="margin:8px 0;">合計在庫: <strong>' + totalQty + '点</strong></p>';
+      }
+
+      exactResult.data.forEach(function(r) {
+        html += '<div class="stock-item">' +
+          '<span class="badge ' + (r.quantity > 0 ? 'badge-ok' : 'badge-ng') + '">' + (r.quantity > 0 ? '在庫あり' : '在庫なし') + '</span> ' +
+          '店舗: <strong>' + r.store_name + '</strong>（' + r.store_code + '）／ 残数: <strong>' + r.quantity + '点</strong>' +
+          '</div>';
+      });
+      html += '</div>';
     }
 
-    var totalQty = result.data.reduce(function(s, r) { return s + r.quantity; }, 0);
-    var html = '<div class="card"><h3>' + result.data[0].item_name + '（' + code + '）</h3>';
-    html += '<p style="margin:8px 0;">合計在庫: <strong>' + totalQty + '点</strong></p>';
-    result.data.forEach(function(r) {
-      html += '<div class="stock-item">' +
-        '<span class="badge ' + (r.quantity > 0 ? 'badge-ok' : 'badge-ng') + '">' + (r.quantity > 0 ? '在庫あり' : '在庫なし') + '</span> ' +
-        '店舗: <strong>' + r.store_name + '</strong>（' + r.store_code + '）／ 残数: <strong>' + r.quantity + '点</strong>' +
-        '</div>';
-    });
-    html += '</div>';
+    // ===== 同型商品セクション =====
+    if (!similarResult.error && similarResult.data && similarResult.data.length > 0) {
+      // 品番ごとにグループ化
+      var grouped = {};
+      similarResult.data.forEach(function(r) {
+        if (!grouped[r.item_code]) grouped[r.item_code] = { item_name: r.item_name, rows: [] };
+        grouped[r.item_code].rows.push(r);
+      });
+
+      html += '<div class="card" style="border-left:4px solid #3498db;">';
+      html += '<h3 style="margin-bottom:12px; color:#3498db;">🔄 同型商品の在庫</h3>';
+
+      Object.keys(grouped).forEach(function(itemCode) {
+        var group = grouped[itemCode];
+        var groupTotal = group.rows.reduce(function(s, r) { return s + r.quantity; }, 0);
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
+        html += '<strong>' + group.item_name + '（' + itemCode + '）</strong>';
+        html += '<span style="font-size:13px; color:#666;">計 ' + groupTotal + '点</span>';
+        html += '</div>';
+        group.rows.forEach(function(r) {
+          html += '<div class="stock-item" style="margin-left:12px;">' +
+            '<span class="badge ' + (r.quantity > 0 ? 'badge-ok' : 'badge-ng') + '">' + (r.quantity > 0 ? '在庫あり' : '在庫なし') + '</span> ' +
+            '店舗: <strong>' + r.store_name + '</strong>（' + r.store_code + '）／ 残数: <strong>' + r.quantity + '点</strong>' +
+            '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
     el.innerHTML = html;
   }
 
