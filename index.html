@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>イベント販売管理システム</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans', sans-serif; background: #f0f4f8; }
@@ -115,8 +116,13 @@
   <div class="card">
     <h3 style="margin-bottom:12px;">在庫検索</h3>
     <div class="input-row">
-      <input type="text" id="stockSearchInput" placeholder="品番をスキャン or 入力">
+      <input type="text" id="stockSearchInput" placeholder="品番を入力 or スキャン">
       <button class="btn-primary" id="btnStockSearch">検索</button>
+    </div>
+    <button class="btn-warning" id="btnToggleCamera" style="width:100%; margin-top:8px;">📷 カメラでバーコードをスキャン</button>
+    <div id="cameraArea" style="display:none; margin-top:12px;">
+      <div id="qr-reader" style="width:100%;"></div>
+      <button class="btn-danger" id="btnStopCamera" style="width:100%; margin-top:8px;">⏹ カメラを停止</button>
     </div>
   </div>
   <div id="stockResult"></div>
@@ -201,6 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnComplete').addEventListener('click', completeTransaction);
   document.getElementById('btnClearCart').addEventListener('click', clearCart);
   document.getElementById('btnStockSearch').addEventListener('click', searchStock);
+  document.getElementById('btnToggleCamera').addEventListener('click', startCamera);
+  document.getElementById('btnStopCamera').addEventListener('click', stopCamera);
   document.getElementById('btnReloadHistory').addEventListener('click', loadHistory);
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
@@ -390,6 +398,44 @@ document.addEventListener('DOMContentLoaded', function() {
     cart = [];
     renderCart();
     resetScanStep();
+  }
+
+  // ==================== カメラスキャン ====================
+  var html5QrCode = null;
+
+  function startCamera() {
+    var cameraArea = document.getElementById('cameraArea');
+    cameraArea.style.display = 'block';
+    document.getElementById('btnToggleCamera').style.display = 'none';
+
+    html5QrCode = new Html5Qrcode('qr-reader');
+    html5QrCode.start(
+      { facingMode: 'environment' }, // 背面カメラを使用
+      { fps: 10, qrbox: { width: 250, height: 150 } },
+      function(decodedText) {
+        // スキャン成功：品番フィールドに入力して検索実行
+        document.getElementById('stockSearchInput').value = decodedText;
+        stopCamera();
+        searchStock();
+      },
+      function(errorMessage) {
+        // スキャン中のエラーは無視（継続スキャン）
+      }
+    ).catch(function(err) {
+      alert('カメラの起動に失敗しました。\nカメラへのアクセスを許可してください。\n' + err);
+      stopCamera();
+    });
+  }
+
+  function stopCamera() {
+    if (html5QrCode) {
+      html5QrCode.stop().then(function() {
+        html5QrCode.clear();
+        html5QrCode = null;
+      }).catch(function() {});
+    }
+    document.getElementById('cameraArea').style.display = 'none';
+    document.getElementById('btnToggleCamera').style.display = 'block';
   }
 
   // ==================== 在庫確認 ====================
