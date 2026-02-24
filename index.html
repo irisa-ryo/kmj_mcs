@@ -253,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     // スマホモード：在庫確認タブのみ表示
     tabBar.innerHTML =
-      '<button class="tab active" onclick="switchTab('stock')">🔍 在庫確認</button>';
+      '<button class="tab active" onclick="switchTab(\'stock\')">🔍 在庫確認</button>';
     document.getElementById('tab-pos').classList.add('hidden');
     document.getElementById('tab-stock').classList.remove('hidden');
     document.getElementById('tab-history').classList.add('hidden');
@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
       'afterend',
       '<span style="background:rgba(255,255,255,0.25);color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">📱 スマホモード</span>'
     );
-  }  }
+  }
 
   // ==================== 状態管理 ====================
   var cart = [];
@@ -292,17 +292,25 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
 
-  document.getElementById('itemCodeInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') confirmItemCode(); });
-  document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') addItem(); });
-  document.getElementById('stockSearchInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') searchStock(); });
-
-  // バーコードリーダー自動確定（Enterなしのリーダー対策：300ms入力停止で自動実行）
+  // バーコードリーダー自動確定タイマー（Enter送信なしのリーダー対策）
   var scanTimer = null;
+
+  document.getElementById('itemCodeInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { clearTimeout(scanTimer); confirmItemCode(); }
+  });
+  document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { clearTimeout(scanTimer); addItem(); }
+  });
+  document.getElementById('stockSearchInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') searchStock();
+  });
+
+  // inputイベント：300ms入力停止で自動確定（Enterなしリーダー対応）
   document.getElementById('itemCodeInput').addEventListener('input', function() {
     clearTimeout(scanTimer);
     scanTimer = setTimeout(function() {
       var val = document.getElementById('itemCodeInput').value.trim();
-      if (val.length >= 4) confirmItemCode(); // 4文字以上で自動確定
+      if (val.length >= 4) confirmItemCode();
     }, 300);
   });
   document.getElementById('warehouseCodeInput').addEventListener('input', function() {
