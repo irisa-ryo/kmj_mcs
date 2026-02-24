@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>イベント販売管理システム</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -146,16 +145,33 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-  // ==================== Supabase設定 ====================
-  const SUPABASE_URL = 'https://exvbrwcpaoxxatokqfta.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmJyd2NwYW94eGF0b2txZnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MTgyNDQsImV4cCI6MjA4Njk5NDI0NH0.HmrY7SWbWvJhzao1L4270YHK0ypE4HQXvCh3Z50uH18';
+  // ==================== GAS API設定 ====================
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbz3BT9Q4nfAS59_6i4E9Q3TtQa8TxhV4VlQb97eWjE45GVykgT8S72jRvNu4sLq6vGZKw/exec';
 
-  // 変数名をdbに統一（supabaseはライブラリ自身が使用するため）
-  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // GAS GETリクエスト
+  async function gasGet(action, params) {
+    var url = GAS_URL + '?action=' + action;
+    if (params) {
+      Object.keys(params).forEach(function(k) {
+        url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+      });
+    }
+    var res = await fetch(url);
+    return await res.json();
+  }
+
+  // GAS POSTリクエスト
+  async function gasPost(body) {
+    var res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    return await res.json();
+  }
 
   // ==================== PC用パスワード設定 ====================
   // ★このパスワードを変更することでPC用URLのパスワードを変更できます
-  var PC_PASSWORD = 'kmj11111';
+  var PC_PASSWORD = '1234';
 
   // URLパラメータからパスワードを取得（例: index.html?pw=1234）
   var urlParams = new URLSearchParams(window.location.search);
@@ -245,8 +261,13 @@ document.addEventListener('DOMContentLoaded', function() {
     var code = document.getElementById('itemCodeInput').value.trim();
     if (!code) return;
 
-    var result = await db.from('inventory').select('*').eq('item_code', code).gt('quantity', 0);
-    if (result.error || !result.data || !result.data.length) {
+    var result = await gasGet('searchByItemCode', { item_code: code });
+    if (result.status !== 'ok' || !result.data || !result.data.length) {
+      showMessage('scanMessage', '品番 "' + code + '" の在庫が見つかりません', 'error');
+      return;
+    }
+    var hasStock = result.data.some(function(r) { return r.quantity > 0; });
+    if (!hasStock) {
       showMessage('scanMessage', '品番 "' + code + '" の在庫が見つかりません', 'error');
       return;
     }
@@ -264,14 +285,13 @@ document.addEventListener('DOMContentLoaded', function() {
     var warehouseCode = document.getElementById('warehouseCodeInput').value.trim();
     if (!warehouseCode || !pendingItemCode) return;
 
-    var result = await db.from('inventory')
-      .select('*').eq('item_code', pendingItemCode).eq('store_code', warehouseCode).single();
+    var result = await gasGet('getInventoryByStoreAndItem', { store_code: warehouseCode, item_code: pendingItemCode });
 
-    if (result.error || !result.data) {
+    if (result.status !== 'ok' || !result.data) {
       showMessage('scanMessage', '店舗コード "' + warehouseCode + '" に品番 "' + pendingItemCode + '" の在庫がありません', 'error');
       return;
     }
-    if (result.data.quantity <= 0) {
+    if (Number(result.data.quantity) <= 0) {
       showMessage('scanMessage', '在庫切れです', 'error');
       return;
     }
@@ -280,7 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (existing) {
       existing.quantity++;
     } else {
-      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: result.data.unit_price, quantity: 1 });
+      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: Number(result.data.unit_price), quantity: 1 });
     }
 
     renderCart();
@@ -359,13 +379,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var qty = parseInt(document.getElementById('manualQty').value) || 1;
     if (!itemCode || !warehouseCode) { alert('品番と倉庫コードを入力してください'); return; }
 
-    var result = await db.from('inventory')
-      .select('*').eq('item_code', itemCode).eq('store_code', warehouseCode).single();
-    if (result.error || !result.data) { alert('商品が見つかりません'); return; }
+    var result = await gasGet('getInventoryByStoreAndItem', { store_code: warehouseCode, item_code: itemCode });
+    if (result.status !== 'ok' || !result.data) { alert('商品が見つかりません'); return; }
 
     var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
     if (existing) { existing.quantity += qty; } else {
-      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: result.data.unit_price, quantity: qty });
+      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: Number(result.data.unit_price), quantity: qty });
     }
     renderCart();
     document.getElementById('manualItemCode').value = '';
@@ -378,25 +397,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var total = cart.reduce(function(sum, i) { return sum + i.unit_price * i.quantity; }, 0);
 
-    var txResult = await db.from('transactions').insert({ total_amount: total }).select().single();
-    if (txResult.error) { alert('会計登録に失敗しました: ' + txResult.error.message); return; }
-
-    var items = cart.map(function(i) {
-      return { transaction_id: txResult.data.id, store_code: i.store_code, store_name: i.store_name, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
-    });
-    await db.from('transaction_items').insert(items);
+    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, items: cart.map(function(i) {
+      return { store_code: i.store_code, store_name: i.store_name, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
+    })});
+    if (txResult.status !== 'ok') { alert('会計登録に失敗しました'); return; }
 
     // 在庫減算
     for (var j = 0; j < cart.length; j++) {
       var item = cart[j];
-      await db.rpc('decrement_inventory', {
-        p_warehouse_code: item.store_code,
-        p_item_code: item.item_code,
-        p_qty: item.quantity
-      });
+      await gasPost({ action: 'decrementInventory', store_code: item.store_code, item_code: item.item_code, qty: item.quantity });
     }
 
-    alert('✅ 会計完了！\n取引ID: ' + txResult.data.id + '\n合計: ¥' + total.toLocaleString() + '\n' + new Date().toLocaleString('ja-JP'));
+    alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n' + new Date().toLocaleString('ja-JP'));
     cart = [];
     renderCart();
     resetScanStep();
@@ -455,11 +467,17 @@ document.addEventListener('DOMContentLoaded', function() {
     el.innerHTML = '<p style="color:#888; padding:10px;">検索中...</p>';
 
     // ① 同一品番を検索
-    var exactResult = await db.from('inventory').select('*').eq('item_code', code).order('store_code');
-
-    // ② 同型商品を前方一致で検索（品番の頭5文字）
     var prefix = code.substring(0, 5);
-    var similarResult = await db.from('inventory').select('*').like('item_code', prefix + '%').neq('item_code', code).order('item_code').order('store_code');
+    var [exactResult, similarResult] = await Promise.all([
+      gasGet('searchByItemCode', { item_code: code }),
+      gasGet('searchSimilar', { prefix: prefix, item_code: code })
+    ]);
+
+    // GASレスポンス形式に合わせて変換
+    if (exactResult.status !== 'ok') exactResult = { error: true, data: null };
+    else exactResult = { data: exactResult.data };
+    if (similarResult.status !== 'ok') similarResult = { error: true, data: null };
+    else similarResult = { data: similarResult.data };
 
     var html = '';
 
@@ -526,9 +544,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== 会計履歴 ====================
   async function loadHistory() {
-    var result = await db.from('transactions').select('*, transaction_items(*)').order('completed_at', { ascending: false }).limit(50);
+    var res = await gasGet('getTransactions');
     var el = document.getElementById('historyList');
-    if (result.error || !result.data) { el.innerHTML = 'データ取得エラー'; return; }
+    if (res.status !== 'ok' || !res.data) { el.innerHTML = 'データ取得エラー'; return; }
+    var result = { data: res.data };
     if (!result.data.length) { el.innerHTML = '会計履歴がありません'; return; }
 
     el.innerHTML = result.data.map(function(tx) {
@@ -537,7 +556,7 @@ document.addEventListener('DOMContentLoaded', function() {
           '<strong>取引ID: ' + tx.id + '</strong>' +
           '<span>¥' + tx.total_amount.toLocaleString() + '</span>' +
         '</div>' +
-        '<div style="font-size:12px; color:#666; margin:4px 0;">' + new Date(tx.completed_at).toLocaleString('ja-JP') + '</div>' +
+        '<div style="font-size:12px; color:#666; margin:4px 0;">' + tx.completed_at + '</div>' +
         '<details>' +
           '<summary style="cursor:pointer; font-size:13px; color:#3498db;">明細を見る（' + tx.transaction_items.length + '点）</summary>' +
           '<table style="margin-top:8px; font-size:13px; width:100%;">' +
@@ -553,23 +572,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== CSVエクスポート ====================
   async function exportCSV() {
-    var result = await db.from('transactions').select('*, transaction_items(*)').order('completed_at', { ascending: true });
-    if (result.error || !result.data || !result.data.length) {
+    var res = await gasGet('getTransactions');
+    if (res.status !== 'ok' || !res.data || !res.data.length) {
       alert('エクスポートできる履歴がありません');
       return;
     }
+    // 古い順に並び替え
+    var result = { data: res.data.slice().reverse() };
 
     // CSVヘッダ
     var rows = [['取引ID', '完了日時', '合計金額', '店舗コード', '店舗名', '品番', '品名', '単価', '数量', '小計']];
 
     result.data.forEach(function(tx) {
       if (tx.transaction_items.length === 0) {
-        rows.push([tx.id, new Date(tx.completed_at).toLocaleString('ja-JP'), tx.total_amount, '', '', '', '', '', '', '']);
+        rows.push([tx.id, tx.completed_at, tx.total_amount, '', '', '', '', '', '', '']);
       } else {
         tx.transaction_items.forEach(function(item) {
           rows.push([
             tx.id,
-            new Date(tx.completed_at).toLocaleString('ja-JP'),
+            tx.completed_at,
             tx.total_amount,
             item.store_code,
             item.store_name,
@@ -619,12 +640,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (!confirm('⚠️ すべての会計履歴を削除します。この操作は元に戻せません。\n本当に削除しますか？')) return;
 
-    // transaction_itemsを先に削除（外部キー制約のため）
-    var r1 = await db.from('transaction_items').delete().neq('id', 0);
-    if (r1.error) { alert('明細の削除に失敗しました: ' + r1.error.message); return; }
-
-    var r2 = await db.from('transactions').delete().neq('id', 0);
-    if (r2.error) { alert('履歴の削除に失敗しました: ' + r2.error.message); return; }
+    var r = await gasPost({ action: 'clearHistory' });
+    if (r.status !== 'ok') { alert('履歴の削除に失敗しました'); return; }
 
     alert('✅ 会計履歴をすべて削除しました');
     loadHistory();
