@@ -263,12 +263,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var result = await gasGet('searchByItemCode', { item_code: code });
     if (result.status !== 'ok' || !result.data || !result.data.length) {
-      showMessage('scanMessage', '品番 "' + code + '" の在庫が見つかりません', 'error');
-      return;
-    }
-    var hasStock = result.data.some(function(r) { return r.quantity > 0; });
-    if (!hasStock) {
-      showMessage('scanMessage', '品番 "' + code + '" の在庫が見つかりません', 'error');
+      showMessage('scanMessage', '品番 "' + code + '" が見つかりません', 'error');
       return;
     }
 
@@ -291,11 +286,6 @@ document.addEventListener('DOMContentLoaded', function() {
       showMessage('scanMessage', '店舗コード "' + warehouseCode + '" に品番 "' + pendingItemCode + '" の在庫がありません', 'error');
       return;
     }
-    if (Number(result.data.quantity) <= 0) {
-      showMessage('scanMessage', '在庫切れです', 'error');
-      return;
-    }
-
     var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
     if (existing) {
       existing.quantity++;
@@ -660,4 +650,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
