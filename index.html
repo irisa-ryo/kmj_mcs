@@ -54,7 +54,7 @@
 
 <div class="header">
   <span>📦 イベント販売管理システム</span>
-  <span id="currentTime" style="font-size:13px;"></span>
+  <span id="cacheStatus" style="font-size:12px; margin-right:12px; color:rgba(255,255,255,0.6);">読み込み中...</span><span id="currentTime" style="font-size:13px;"></span>
 </div>
 
 <div class="tabs" id="tabBar">
@@ -218,9 +218,61 @@ document.addEventListener('DOMContentLoaded', function() {
     return await res.json();
   }
 
+  // ==================== 在庫キャッシュ ====================
+  var inventoryCache = [];      // 全在庫レコードの配列
+  var inventoryCacheMap = {};   // 高速検索用マップ: "store_code___item_code" → record
+
+  async function loadInventoryCache() {
+    var statusEl = document.getElementById('cacheStatus');
+    if (statusEl) statusEl.textContent = '在庫データ読み込み中...';
+    try {
+      var res = await gasGet('getAllInventory');
+      if (res.status !== 'ok') throw new Error(res.message);
+      inventoryCache = res.data;
+      inventoryCacheMap = {};
+      inventoryCache.forEach(function(r) {
+        inventoryCacheMap[r.store_code + '___' + r.item_code] = r;
+      });
+      if (statusEl) {
+        statusEl.textContent = '在庫: ' + inventoryCache.length + '件読込済';
+        statusEl.style.color = 'rgba(255,255,255,0.8)';
+      }
+    } catch(e) {
+      if (statusEl) { statusEl.textContent = '⚠ 在庫読込失敗'; statusEl.style.color = '#f39c12'; }
+    }
+  }
+
+  // キャッシュから品番で検索（完全一致）
+  function cacheSearchByItemCode(item_code) {
+    return inventoryCache.filter(function(r) { return String(r.item_code) === String(item_code); })
+      .sort(function(a,b) { return String(a.store_code) > String(b.store_code) ? 1 : -1; });
+  }
+
+  // キャッシュから同型商品検索（前方一致）
+  function cacheSearchSimilar(prefix, exclude_item_code) {
+    return inventoryCache.filter(function(r) {
+      return String(r.item_code) !== String(exclude_item_code) && String(r.item_code).startsWith(prefix);
+    }).sort(function(a,b) { return String(a.item_code) > String(b.item_code) ? 1 : a.item_code < b.item_code ? -1 : String(a.store_code) > String(b.store_code) ? 1 : -1; });
+  }
+
+  // キャッシュから店舗＋品番で取得
+  function cacheGetByStoreAndItem(store_code, item_code) {
+    return inventoryCacheMap[String(store_code) + '___' + String(item_code)] || null;
+  }
+
+  // 会計完了後にキャッシュをローカル更新（再取得不要）
+  function updateCacheAfterSale(cartItems) {
+    cartItems.forEach(function(item) {
+      var key = String(item.store_code) + '___' + String(item.item_code);
+      if (inventoryCacheMap[key]) {
+        inventoryCacheMap[key].quantity = Number(inventoryCacheMap[key].quantity) - item.quantity;
+      }
+    });
+  }
+
   // ==================== PC用パスワード設定 ====================
   // ★このパスワードを変更することでPC用URLのパスワードを変更できます
-  var PC_PASSWORD = 'kmj11111';
+  var PC_PASSWORD = '1234';
 
   // URLパラメータからパスワードを取得（例: index.html?pw=1234）
   var urlParams = new URLSearchParams(window.location.search);
@@ -292,33 +344,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
 
-  // バーコードリーダー自動確定タイマー（Enter送信なしのリーダー対策）
-  var scanTimer = null;
-
   document.getElementById('itemCodeInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { clearTimeout(scanTimer); confirmItemCode(); }
+    if (e.key === 'Enter') confirmItemCode();
   });
   document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { clearTimeout(scanTimer); addItem(); }
+    if (e.key === 'Enter') addItem();
   });
   document.getElementById('stockSearchInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') searchStock();
-  });
-
-  // inputイベント：300ms入力停止で自動確定（Enterなしリーダー対応）
-  document.getElementById('itemCodeInput').addEventListener('input', function() {
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(function() {
-      var val = document.getElementById('itemCodeInput').value.trim();
-      if (val.length >= 4) confirmItemCode();
-    }, 300);
-  });
-  document.getElementById('warehouseCodeInput').addEventListener('input', function() {
-    clearTimeout(scanTimer);
-    scanTimer = setTimeout(function() {
-      var val = document.getElementById('warehouseCodeInput').value.trim();
-      if (val.length >= 4) addItem();
-    }, 300);
   });
 
   // 初期フォーカス
@@ -327,6 +360,9 @@ document.addEventListener('DOMContentLoaded', function() {
   } else {
     document.getElementById('stockSearchInput').focus();
   }
+
+  // 起動時に在庫キャッシュを読み込む
+  loadInventoryCache();
 
   // ==================== タブ切り替え ====================
   function switchTab(tab) {
@@ -343,12 +379,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== 会計処理 ====================
 
-  async function confirmItemCode() {
+  function confirmItemCode() {
     var code = document.getElementById('itemCodeInput').value.trim();
     if (!code) return;
 
-    var result = await gasGet('searchByItemCode', { item_code: code });
-    if (result.status !== 'ok' || !result.data || !result.data.length) {
+    var found = cacheSearchByItemCode(code);
+    if (!found.length) {
       showMessage('scanMessage', '品番 "' + code + '" が見つかりません', 'error');
       return;
     }
@@ -362,26 +398,25 @@ document.addEventListener('DOMContentLoaded', function() {
     clearMessage('scanMessage');
   }
 
-  async function addItem() {
+  function addItem() {
     var warehouseCode = document.getElementById('warehouseCodeInput').value.trim();
     if (!warehouseCode || !pendingItemCode) return;
 
-    var result = await gasGet('getInventoryByStoreAndItem', { store_code: warehouseCode, item_code: pendingItemCode });
-
-    if (result.status !== 'ok' || !result.data) {
+    var record = cacheGetByStoreAndItem(warehouseCode, pendingItemCode);
+    if (!record) {
       showMessage('scanMessage', '店舗コード "' + warehouseCode + '" に品番 "' + pendingItemCode + '" の在庫がありません', 'error');
       return;
     }
-    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
+    var existing = cart.find(function(i) { return String(i.item_code) === String(record.item_code) && String(i.store_code) === String(record.store_code); });
     if (existing) {
       existing.quantity++;
     } else {
-      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: Number(result.data.unit_price), quantity: 1 });
+      cart.push({ store_code: record.store_code, store_name: record.store_name, item_code: record.item_code, item_name: record.item_name, unit_price: Number(record.unit_price), quantity: 1 });
     }
 
     renderCart();
     resetScanStep();
-    showMessage('scanMessage', '✅ ' + result.data.item_name + ' を追加しました', 'success');
+    showMessage('scanMessage', '✅ ' + record.item_name + ' を追加しました', 'success');
   }
 
   function cancelStep2() {
@@ -492,12 +527,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var qty = parseInt(document.getElementById('manualQty').value) || 1;
     if (!itemCode || !warehouseCode) { alert('品番と倉庫コードを入力してください'); return; }
 
-    var result = await gasGet('getInventoryByStoreAndItem', { store_code: warehouseCode, item_code: itemCode });
-    if (result.status !== 'ok' || !result.data) { alert('商品が見つかりません'); return; }
+    var record = cacheGetByStoreAndItem(warehouseCode, itemCode);
+    if (!record) { alert('商品が見つかりません'); return; }
 
-    var existing = cart.find(function(i) { return i.item_code === result.data.item_code && i.store_code === result.data.store_code; });
+    var existing = cart.find(function(i) { return String(i.item_code) === String(record.item_code) && String(i.store_code) === String(record.store_code); });
     if (existing) { existing.quantity += qty; } else {
-      cart.push({ store_code: result.data.store_code, store_name: result.data.store_name, item_code: result.data.item_code, item_name: result.data.item_name, unit_price: Number(result.data.unit_price), quantity: qty });
+      cart.push({ store_code: record.store_code, store_name: record.store_name, item_code: record.item_code, item_name: record.item_name, unit_price: Number(record.unit_price), quantity: qty });
     }
     renderCart();
     document.getElementById('manualItemCode').value = '';
@@ -512,16 +547,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var total = cart.reduce(function(sum, i) { return sum + i.unit_price * i.quantity; }, 0);
 
-    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, payment_method: selectedPayment, items: cart.map(function(i) {
+    var cartSnapshot = cart.map(function(i) {
       return { store_code: i.store_code, store_name: i.store_name, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
-    })});
+    });
+    // saveTransactionとbatchDecrementを1回のAPIコールで処理
+    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, payment_method: selectedPayment, items: cartSnapshot });
     if (txResult.status !== 'ok') { alert('会計登録に失敗しました'); return; }
 
-    // 在庫減算
-    for (var j = 0; j < cart.length; j++) {
-      var item = cart[j];
-      await gasPost({ action: 'decrementInventory', store_code: item.store_code, item_code: item.item_code, qty: item.quantity });
-    }
+    // ローカルキャッシュをすぐに更新（再取得不要）
+    updateCacheAfterSale(cartSnapshot);
 
     var paymentLabel = selectedPayment === 'qr' ? 'QRコード決済' : 'クレジット決済';
     alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n決済方法: ' + paymentLabel + '\n' + new Date().toLocaleString('ja-JP'));
@@ -583,18 +617,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var el = document.getElementById('stockResult');
     el.innerHTML = '<p style="color:#888; padding:10px;">検索中...</p>';
 
-    // ① 同一品番を検索
+    // ① キャッシュから検索（GAS呼び出しなし・即時）
     var prefix = code.substring(0, 5);
-    var [exactResult, similarResult] = await Promise.all([
-      gasGet('searchByItemCode', { item_code: code }),
-      gasGet('searchSimilar', { prefix: prefix, item_code: code })
-    ]);
-
-    // GASレスポンス形式に合わせて変換
-    if (exactResult.status !== 'ok') exactResult = { error: true, data: null };
-    else exactResult = { data: exactResult.data };
-    if (similarResult.status !== 'ok') similarResult = { error: true, data: null };
-    else similarResult = { data: similarResult.data };
+    var exactData = cacheSearchByItemCode(code);
+    var similarData = cacheSearchSimilar(prefix, code);
+    var exactResult = exactData.length ? { data: exactData } : { error: true, data: null };
+    var similarResult = similarData.length ? { data: similarData } : { error: true, data: null };
 
     var html = '';
 
