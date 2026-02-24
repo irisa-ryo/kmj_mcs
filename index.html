@@ -40,6 +40,8 @@
   .alert-success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
   #stockResult { margin-top: 16px; }
   .stock-item { padding: 12px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #3498db; }
+  .payment-btn.selected-qr { border-color: #27ae60 !important; background: #eafaf1 !important; }
+  .payment-btn.selected-credit { border-color: #3498db !important; background: #eaf4fb !important; }
 </style>
 </head>
 <body>
@@ -106,7 +108,48 @@
     <div style="margin-top:12px; text-align:right; font-size:13px; color:#666;" id="cartEmpty">商品がスキャンされていません</div>
   </div>
 
-  <button class="btn-success" id="btnComplete">✅ 会計終了（決済完了後に押す）</button>
+  <!-- 決済方法選択 -->
+  <div class="card" id="paymentCard">
+    <h3 style="margin-bottom:12px; font-size:15px; color:#555;">💳 決済方法を選択してください</h3>
+    <div style="display:flex; gap:12px;">
+
+      <button id="btnPayQR" class="payment-btn" onclick="selectPayment('qr')" style="flex:1; padding:16px 8px; border:2px solid #ddd; border-radius:10px; background:white; cursor:pointer; text-align:center; transition:all 0.2s;">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:0 auto 8px;">
+          <rect x="4" y="4" width="16" height="16" rx="2" fill="#2c3e50"/>
+          <rect x="7" y="7" width="10" height="10" rx="1" fill="white"/>
+          <rect x="9" y="9" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="28" y="4" width="16" height="16" rx="2" fill="#2c3e50"/>
+          <rect x="31" y="7" width="10" height="10" rx="1" fill="white"/>
+          <rect x="33" y="9" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="4" y="28" width="16" height="16" rx="2" fill="#2c3e50"/>
+          <rect x="7" y="31" width="10" height="10" rx="1" fill="white"/>
+          <rect x="9" y="33" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="28" y="28" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="38" y="28" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="28" y="38" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="38" y="38" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+          <rect x="33" y="33" width="6" height="6" rx="0.5" fill="#2c3e50"/>
+        </svg>
+        <span style="font-size:14px; font-weight:bold; color:#2c3e50;">QRコード決済</span>
+      </button>
+
+      <button id="btnPayCredit" class="payment-btn" onclick="selectPayment('credit')" style="flex:1; padding:16px 8px; border:2px solid #ddd; border-radius:10px; background:white; cursor:pointer; text-align:center; transition:all 0.2s;">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:0 auto 8px;">
+          <rect x="4" y="10" width="40" height="28" rx="4" fill="#2c3e50"/>
+          <rect x="4" y="18" width="40" height="8" fill="#e74c3c"/>
+          <rect x="8" y="30" width="12" height="4" rx="1" fill="#bdc3c7"/>
+          <rect x="22" y="30" width="8" height="4" rx="1" fill="#bdc3c7"/>
+          <circle cx="34" cy="32" r="4" fill="#f39c12"/>
+          <circle cx="38" cy="32" r="4" fill="#e67e22" fill-opacity="0.7"/>
+        </svg>
+        <span style="font-size:14px; font-weight:bold; color:#2c3e50;">クレジット決済</span>
+      </button>
+
+    </div>
+    <div id="paymentSelected" style="display:none; margin-top:10px; padding:8px 12px; border-radius:6px; font-size:13px; font-weight:bold; text-align:center;"></div>
+  </div>
+
+  <button class="btn-success" id="btnComplete" disabled style="opacity:0.4; cursor:not-allowed;">✅ 会計終了（決済完了後に押す）</button>
   <button class="btn-danger" id="btnClearCart" style="width:100%; margin-top:10px;">🗑️ カートをリセット</button>
 </div>
 
@@ -210,6 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // ==================== 状態管理 ====================
   var cart = [];
   var pendingItemCode = null;
+  var selectedPayment = null; // 'qr' or 'credit'
 
   // ==================== 時計 ====================
   setInterval(function() {
@@ -351,11 +395,48 @@ document.addEventListener('DOMContentLoaded', function() {
     renderCart();
   };
 
+  window.selectPayment = function(method) {
+    selectedPayment = method;
+    // ボタンの見た目を更新
+    document.getElementById('btnPayQR').classList.remove('selected-qr', 'selected-credit');
+    document.getElementById('btnPayCredit').classList.remove('selected-qr', 'selected-credit');
+    if (method === 'qr') {
+      document.getElementById('btnPayQR').classList.add('selected-qr');
+      document.getElementById('paymentSelected').style.display = 'block';
+      document.getElementById('paymentSelected').style.background = '#eafaf1';
+      document.getElementById('paymentSelected').style.color = '#1e8449';
+      document.getElementById('paymentSelected').textContent = '✅ QRコード決済が選択されています';
+    } else {
+      document.getElementById('btnPayCredit').classList.add('selected-credit');
+      document.getElementById('paymentSelected').style.display = 'block';
+      document.getElementById('paymentSelected').style.background = '#eaf4fb';
+      document.getElementById('paymentSelected').style.color = '#1a5276';
+      document.getElementById('paymentSelected').textContent = '✅ クレジット決済が選択されています';
+    }
+    // 会計完了ボタンを有効化
+    var btn = document.getElementById('btnComplete');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  };
+
+  function resetPayment() {
+    selectedPayment = null;
+    document.getElementById('btnPayQR').classList.remove('selected-qr', 'selected-credit');
+    document.getElementById('btnPayCredit').classList.remove('selected-qr', 'selected-credit');
+    document.getElementById('paymentSelected').style.display = 'none';
+    var btn = document.getElementById('btnComplete');
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'not-allowed';
+  }
+
   function clearCart() {
     if (!confirm('カートをリセットしますか？')) return;
     cart = [];
     renderCart();
     resetScanStep();
+    resetPayment();
     clearMessage('scanMessage');
   }
 
@@ -383,11 +464,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function completeTransaction() {
     if (cart.length === 0) { alert('カートが空です'); return; }
-    if (!confirm('¥' + document.getElementById('totalAmount').textContent + ' の会計を完了しますか？')) return;
+    if (!selectedPayment) { alert('決済方法を選択してください'); return; }
+    var paymentLabel = selectedPayment === 'qr' ? 'QRコード決済' : 'クレジット決済';
+    if (!confirm('¥' + document.getElementById('totalAmount').textContent + '\n決済方法: ' + paymentLabel + '\n\n会計を完了しますか？')) return;
 
     var total = cart.reduce(function(sum, i) { return sum + i.unit_price * i.quantity; }, 0);
 
-    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, items: cart.map(function(i) {
+    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, payment_method: selectedPayment, items: cart.map(function(i) {
       return { store_code: i.store_code, store_name: i.store_name, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
     })});
     if (txResult.status !== 'ok') { alert('会計登録に失敗しました'); return; }
@@ -398,10 +481,12 @@ document.addEventListener('DOMContentLoaded', function() {
       await gasPost({ action: 'decrementInventory', store_code: item.store_code, item_code: item.item_code, qty: item.quantity });
     }
 
-    alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n' + new Date().toLocaleString('ja-JP'));
+    var paymentLabel = selectedPayment === 'qr' ? 'QRコード決済' : 'クレジット決済';
+    alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n決済方法: ' + paymentLabel + '\n' + new Date().toLocaleString('ja-JP'));
     cart = [];
     renderCart();
     resetScanStep();
+    resetPayment();
   }
 
   // ==================== カメラスキャン ====================
@@ -544,9 +629,13 @@ document.addEventListener('DOMContentLoaded', function() {
       return '<div style="border:1px solid #ddd; border-radius:6px; padding:12px; margin-bottom:10px;">' +
         '<div style="display:flex; justify-content:space-between;">' +
           '<strong>取引ID: ' + tx.id + '</strong>' +
-          '<span>¥' + tx.total_amount.toLocaleString() + '</span>' +
+          '<span>¥' + Number(tx.total_amount).toLocaleString() + '</span>' +
         '</div>' +
-        '<div style="font-size:12px; color:#666; margin:4px 0;">' + tx.completed_at + '</div>' +
+        '<div style="font-size:12px; color:#666; margin:2px 0;">' + tx.completed_at + '</div>' +
+        '<div style="font-size:12px; margin:4px 0;">' +
+          '<span style="background:' + (tx.payment_method === 'QRコード決済' ? '#eafaf1' : '#eaf4fb') + '; color:' + (tx.payment_method === 'QRコード決済' ? '#1e8449' : '#1a5276') + '; padding:2px 8px; border-radius:4px;">' +
+          (tx.payment_method || '不明') + '</span>' +
+        '</div>' +
         '<details>' +
           '<summary style="cursor:pointer; font-size:13px; color:#3498db;">明細を見る（' + tx.transaction_items.length + '点）</summary>' +
           '<table style="margin-top:8px; font-size:13px; width:100%;">' +
@@ -571,17 +660,18 @@ document.addEventListener('DOMContentLoaded', function() {
     var result = { data: res.data.slice().reverse() };
 
     // CSVヘッダ
-    var rows = [['取引ID', '完了日時', '合計金額', '店舗コード', '店舗名', '品番', '品名', '単価', '数量', '小計']];
+    var rows = [['取引ID', '完了日時', '合計金額', '決済方法', '店舗コード', '店舗名', '品番', '品名', '単価', '数量', '小計']];
 
     result.data.forEach(function(tx) {
       if (tx.transaction_items.length === 0) {
-        rows.push([tx.id, tx.completed_at, tx.total_amount, '', '', '', '', '', '', '']);
+        rows.push([tx.id, tx.completed_at, tx.total_amount, tx.payment_method || '', '', '', '', '', '', '', '']);
       } else {
         tx.transaction_items.forEach(function(item) {
           rows.push([
             tx.id,
             tx.completed_at,
             tx.total_amount,
+            tx.payment_method || '',
             item.store_code,
             item.store_name,
             item.item_code,
