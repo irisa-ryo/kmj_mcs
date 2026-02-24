@@ -45,12 +45,11 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-  // ==================== パスワード設定 ====================
-  // ★pos_system.htmlのPC_PASSWORDと同じ値にしてください
+
+// ==================== パスワード設定 ====================
   var UPLOAD_PASSWORD = 'kmj11111';
   var urlParams = new URLSearchParams(window.location.search);
   var isAllowed = urlParams.get('pw') === UPLOAD_PASSWORD;
@@ -62,10 +61,19 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('lockedMessage').classList.add('hidden');
   document.getElementById('mainContent').classList.remove('hidden');
 
-  // ==================== Supabase設定 ====================
-  const SUPABASE_URL = 'https://exvbrwcpaoxxatokqfta.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmJyd2NwYW94eGF0b2txZnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MTgyNDQsImV4cCI6MjA4Njk5NDI0NH0.HmrY7SWbWvJhzao1L4270YHK0ypE4HQXvCh3Z50uH18';
-  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbz3BT9Q4nfAS59_6i4E9Q3TtQa8TxhV4VlQb97eWjE45GVykgT8S72jRvNu4sLq6vGZKw/exec';
+
+  async function gasGet(action, params) {
+    var url = GAS_URL + '?action=' + action;
+    if (params) Object.keys(params).forEach(function(k) { url += '&' + k + '=' + encodeURIComponent(params[k]); });
+    var res = await fetch(url);
+    return await res.json();
+  }
+
+  async function gasPost(body) {
+    var res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
+    return await res.json();
+  }
 
   var log = document.getElementById('log');
   document.getElementById('btnTest').addEventListener('click', testConnection);
@@ -80,9 +88,9 @@ document.addEventListener('DOMContentLoaded', function() {
     log.textContent = '';
     addLog('接続テスト中...');
     try {
-      var result = await db.from('inventory').select('count');
-      if (result.error) throw result.error;
-      addLog('✅ Supabase接続成功！');
+      var result = await gasGet('ping');
+      if (result.status !== 'ok') throw new Error('GASから異常レスポンス');
+      addLog('✅ Google Sheets接続成功！');
     } catch(e) {
       addLog('❌ 接続失敗: ' + e.message);
     }
@@ -142,8 +150,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var chunkSize = 50, successCount = 0;
     for (var j = 0; j < uniqueRows.length; j += chunkSize) {
       var chunk = uniqueRows.slice(j, j + chunkSize);
-      var result = await db.from('inventory').upsert(chunk, { onConflict: 'store_code,item_code' });
-      if (result.error) { addLog('❌ エラー: ' + result.error.message + '\n' + JSON.stringify(result.error)); return; }
+      var result = await gasPost({ action: 'upsertInventory', rows: chunk });
+      if (result.status !== 'ok') { addLog('❌ エラー: ' + (result.message || JSON.stringify(result))); return; }
       successCount += chunk.length;
       addLog('進捗: ' + successCount + '/' + uniqueRows.length + '件完了');
     }
@@ -168,4 +176,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
