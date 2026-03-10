@@ -252,6 +252,8 @@ document.addEventListener('DOMContentLoaded', function() {
         var data = JSON.parse(saved);
         if (data.sid && data.name) {
           SPREADSHEET_ID = data.sid;
+          // sessionStorageに保存済みのPCモード状態を復元（PC_PASSWORD宣言前のため直接セット）
+          isPCMode = data.pc === true;
           showMainApp(data.sid, data.name);
           initMainApp();
           return;
@@ -295,7 +297,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (data.status === 'ok') {
         // ログイン成功：セッションに保存
-        sessionStorage.setItem('pos_login', JSON.stringify({ sid: sid, name: data.data.name }));
+        var pcMode = new URLSearchParams(window.location.search).get('pw') === PC_PASSWORD;
+        sessionStorage.setItem('pos_login', JSON.stringify({ sid: sid, name: data.data.name, pc: pcMode }));
         showMainApp(sid, data.data.name);
         // メインアプリ初期化
         initMainApp();
@@ -318,11 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // メインアプリの初期化（ログイン完了後に実行）
   function initMainApp() {
-    // PCパスワード判定
-    var urlParams2 = new URLSearchParams(window.location.search);
-    var isPCMode2 = urlParams2.get('pw') === PC_PASSWORD;
-    // isPCModeを上書き（すでに宣言済みのため再代入）
-    isPCMode = isPCMode2;
+    // isPCModeはログイン時またはsessionStorage復元時に設定済み
     setupTabs();
     loadInventoryCache();
     if (isPCMode) {
