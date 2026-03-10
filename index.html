@@ -23,7 +23,7 @@
   .input-row { display: flex; gap: 10px; margin-bottom: 12px; }
   input[type=text], input[type=number] { padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; flex: 1; }
   input:focus { border-color: #3498db; outline: none; }
-  .ime-off { ime-mode: disabled; }
+  .ime-off { ime-mode: disabled; }  /* 旧ブラウザ向け */
   button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
   .btn-primary { background: #3498db; color: white; }
   .btn-success { background: #27ae60; color: white; font-size: 18px; padding: 14px 28px; width: 100%; }
@@ -47,6 +47,7 @@
   .alert-success { background: #eafaf1; border: 1px solid #27ae60; color: #1e8449; }
   #stockResult { margin-top: 16px; }
   .stock-item { padding: 12px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #3498db; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .payment-btn.selected-qr { border-color: #27ae60 !important; background: #eafaf1 !important; }
   .payment-btn.selected-credit { border-color: #3498db !important; background: #eaf4fb !important; }
 </style>
@@ -76,7 +77,7 @@
     <div id="scanStep1" class="scan-mode">
       <div style="font-size:13px; color:#856404; margin-bottom:8px;">【STEP 1】品番バーコードをスキャン または入力</div>
       <div class="input-row">
-        <input type="text" id="itemCodeInput" placeholder="品番（バーコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="itemCodeInput" inputmode="url" placeholder="品番（バーコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button class="btn-primary" id="btnConfirmItem">確定</button>
       </div>
     </div>
@@ -84,7 +85,7 @@
       <div style="font-size:13px; color:#155724; margin-bottom:8px;">【STEP 2】倉庫QRコードをスキャン</div>
       <div id="scannedItemInfo" style="margin-bottom:8px; font-weight:bold;"></div>
       <div class="input-row">
-        <input type="text" id="warehouseCodeInput" placeholder="倉庫コード（QRコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="warehouseCodeInput" inputmode="url" placeholder="倉庫コード（QRコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button class="btn-primary" id="btnAddItem">追加</button>
       </div>
       <button class="btn-gray" id="btnCancelStep2" style="margin-top:4px;">← 品番入力に戻る</button>
@@ -101,8 +102,8 @@
     <div id="manualInputArea" class="hidden" style="background:#fff3cd; padding:12px; border-radius:6px; margin-bottom:12px;">
       <h4 style="margin-bottom:8px;">手動入力</h4>
       <div class="input-row">
-        <input type="text" id="manualItemCode" placeholder="品番" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        <input type="text" id="manualWarehouseCode" placeholder="倉庫コード" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="manualItemCode" inputmode="url" placeholder="品番" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="manualWarehouseCode" inputmode="url" placeholder="倉庫コード" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <input type="number" id="manualQty" placeholder="数量" value="1" style="width:80px; flex:none;">
         <button class="btn-primary" id="btnManualAdd">追加</button>
       </div>
@@ -157,6 +158,15 @@
   </div>
 
   <button class="btn-success" id="btnComplete" disabled style="opacity:0.4; cursor:not-allowed;">✅ 会計終了（決済完了後に押す）</button>
+
+  <!-- 処理中スピナー -->
+  <div id="processingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:9999; flex-direction:column; justify-content:center; align-items:center;">
+    <div style="background:white; border-radius:16px; padding:36px 48px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+      <div style="width:56px; height:56px; border:6px solid #e0e0e0; border-top-color:#2471a3; border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 20px;"></div>
+      <div style="font-size:16px; font-weight:bold; color:#2c3e50;" id="processingMsg">会計処理中...</div>
+      <div style="font-size:13px; color:#888; margin-top:6px;">しばらくお待ちください</div>
+    </div>
+  </div>
   <button class="btn-danger" id="btnClearCart" style="width:100%; margin-top:10px;">🗑️ カートをリセット</button>
 </div>
 
@@ -165,7 +175,7 @@
   <div class="card">
     <h3 style="margin-bottom:12px;">在庫検索</h3>
     <div class="input-row">
-      <input type="text" id="stockSearchInput" placeholder="品番を入力 or スキャン" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <input type="text" id="stockSearchInput" inputmode="url" placeholder="品番を入力 or スキャン" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="btn-primary" id="btnStockSearch">検索</button>
     </div>
     <button class="btn-warning" id="btnToggleCamera" style="width:100%; margin-top:8px;">📷 カメラでバーコードをスキャン</button>
@@ -357,18 +367,31 @@ document.addEventListener('DOMContentLoaded', function() {
     if (el.value !== v) el.value = v;
   }
 
+  // compositionend: IME確定時に全角→半角変換（日本語入力を確定後に変換）
+  // input: IME非使用時（バーコードリーダー等）に即時変換
+  var composingFlags = {};
+  ['itemCodeInput','warehouseCodeInput','stockSearchInput','manualItemCode','manualWarehouseCode'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('compositionstart', function() { composingFlags[id] = true; });
+    el.addEventListener('compositionend', function() {
+      composingFlags[id] = false;
+      normalizeInput(id);
+    });
+    el.addEventListener('input', function() {
+      if (!composingFlags[id]) normalizeInput(id);
+    });
+  });
+
   document.getElementById('itemCodeInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { normalizeInput('itemCodeInput'); confirmItemCode(); }
   });
-  document.getElementById('itemCodeInput').addEventListener('change', function() { normalizeInput('itemCodeInput'); });
   document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { normalizeInput('warehouseCodeInput'); addItem(); }
   });
-  document.getElementById('warehouseCodeInput').addEventListener('change', function() { normalizeInput('warehouseCodeInput'); });
   document.getElementById('stockSearchInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { normalizeInput('stockSearchInput'); searchStock(); }
   });
-  document.getElementById('stockSearchInput').addEventListener('change', function() { normalizeInput('stockSearchInput'); });
 
   // 初期フォーカス
   if (isPCMode) {
@@ -555,6 +578,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('manualWarehouseCode').value = '';
   }
 
+  function showSpinner(msg) {
+    var overlay = document.getElementById('processingOverlay');
+    document.getElementById('processingMsg').textContent = msg || '処理中...';
+    overlay.style.display = 'flex';
+  }
+  function hideSpinner() {
+    document.getElementById('processingOverlay').style.display = 'none';
+  }
+
   async function completeTransaction() {
     if (cart.length === 0) { alert('カートが空です'); return; }
     if (!selectedPayment) { alert('決済方法を選択してください'); return; }
@@ -562,23 +594,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!confirm('¥' + document.getElementById('totalAmount').textContent + '\n決済方法: ' + paymentLabel + '\n\n会計を完了しますか？')) return;
 
     var total = cart.reduce(function(sum, i) { return sum + i.unit_price * i.quantity; }, 0);
-
     var cartSnapshot = cart.map(function(i) {
       return { store_code: i.store_code, store_name: i.store_name, item_code: i.item_code, item_name: i.item_name, unit_price: i.unit_price, quantity: i.quantity };
     });
-    // saveTransactionとbatchDecrementを1回のAPIコールで処理
-    var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, payment_method: selectedPayment, items: cartSnapshot });
-    if (txResult.status !== 'ok') { alert('会計登録に失敗しました'); return; }
 
-    // ローカルキャッシュをすぐに更新（再取得不要）
-    updateCacheAfterSale(cartSnapshot);
+    showSpinner('会計処理中...');
+    try {
+      var txResult = await gasPost({ action: 'saveTransaction', total_amount: total, payment_method: selectedPayment, items: cartSnapshot });
+      hideSpinner();
+      if (txResult.status !== 'ok') { alert('会計登録に失敗しました'); return; }
 
-    var paymentLabel = selectedPayment === 'qr' ? 'QRコード決済' : 'クレジット決済';
-    alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n決済方法: ' + paymentLabel + '\n' + new Date().toLocaleString('ja-JP'));
-    cart = [];
-    renderCart();
-    resetScanStep();
-    resetPayment();
+      updateCacheAfterSale(cartSnapshot);
+
+      alert('✅ 会計完了！\n取引ID: ' + txResult.data.transaction_id + '\n合計: ¥' + total.toLocaleString() + '\n決済方法: ' + paymentLabel + '\n' + new Date().toLocaleString('ja-JP'));
+      cart = [];
+      renderCart();
+      resetScanStep();
+      resetPayment();
+    } catch(e) {
+      hideSpinner();
+      alert('通信エラーが発生しました。再度お試しください。');
+    }
   }
 
   // ==================== カメラスキャン ====================
@@ -831,4 +867,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
