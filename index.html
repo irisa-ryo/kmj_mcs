@@ -23,6 +23,7 @@
   .input-row { display: flex; gap: 10px; margin-bottom: 12px; }
   input[type=text], input[type=number] { padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; flex: 1; }
   input:focus { border-color: #3498db; outline: none; }
+  .ime-off { ime-mode: disabled; }
   button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
   .btn-primary { background: #3498db; color: white; }
   .btn-success { background: #27ae60; color: white; font-size: 18px; padding: 14px 28px; width: 100%; }
@@ -75,7 +76,7 @@
     <div id="scanStep1" class="scan-mode">
       <div style="font-size:13px; color:#856404; margin-bottom:8px;">【STEP 1】品番バーコードをスキャン または入力</div>
       <div class="input-row">
-        <input type="text" id="itemCodeInput" placeholder="品番（バーコード or 手入力）">
+        <input type="text" id="itemCodeInput" placeholder="品番（バーコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button class="btn-primary" id="btnConfirmItem">確定</button>
       </div>
     </div>
@@ -83,7 +84,7 @@
       <div style="font-size:13px; color:#155724; margin-bottom:8px;">【STEP 2】倉庫QRコードをスキャン</div>
       <div id="scannedItemInfo" style="margin-bottom:8px; font-weight:bold;"></div>
       <div class="input-row">
-        <input type="text" id="warehouseCodeInput" placeholder="倉庫コード（QRコード or 手入力）">
+        <input type="text" id="warehouseCodeInput" placeholder="倉庫コード（QRコード or 手入力）" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <button class="btn-primary" id="btnAddItem">追加</button>
       </div>
       <button class="btn-gray" id="btnCancelStep2" style="margin-top:4px;">← 品番入力に戻る</button>
@@ -100,8 +101,8 @@
     <div id="manualInputArea" class="hidden" style="background:#fff3cd; padding:12px; border-radius:6px; margin-bottom:12px;">
       <h4 style="margin-bottom:8px;">手動入力</h4>
       <div class="input-row">
-        <input type="text" id="manualItemCode" placeholder="品番">
-        <input type="text" id="manualWarehouseCode" placeholder="倉庫コード">
+        <input type="text" id="manualItemCode" placeholder="品番" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="manualWarehouseCode" placeholder="倉庫コード" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <input type="number" id="manualQty" placeholder="数量" value="1" style="width:80px; flex:none;">
         <button class="btn-primary" id="btnManualAdd">追加</button>
       </div>
@@ -164,7 +165,7 @@
   <div class="card">
     <h3 style="margin-bottom:12px;">在庫検索</h3>
     <div class="input-row">
-      <input type="text" id="stockSearchInput" placeholder="品番を入力 or スキャン">
+      <input type="text" id="stockSearchInput" placeholder="品番を入力 or スキャン" class="ime-off" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="btn-primary" id="btnStockSearch">検索</button>
     </div>
     <button class="btn-warning" id="btnToggleCamera" style="width:100%; margin-top:8px;">📷 カメラでバーコードをスキャン</button>
@@ -196,10 +197,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== GAS API設定 ====================
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbz3BT9Q4nfAS59_6i4E9Q3TtQa8TxhV4VlQb97eWjE45GVykgT8S72jRvNu4sLq6vGZKw/exec';
+  // ★イベントごとに使用するスプレッドシートIDをここに設定
+  var SPREADSHEET_ID = '1RxMbVPMa0FrD_sCf6_eHVsqWa8rdFWbWdfQwY4l_h4Y';
 
   // GAS GETリクエスト
   async function gasGet(action, params) {
-    var url = GAS_URL + '?action=' + action;
+    var url = GAS_URL + '?action=' + action + '&spreadsheet_id=' + encodeURIComponent(SPREADSHEET_ID);
     if (params) {
       Object.keys(params).forEach(function(k) {
         url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
@@ -209,11 +212,11 @@ document.addEventListener('DOMContentLoaded', function() {
     return await res.json();
   }
 
-  // GAS POSTリクエスト
+  // GAS POSTリクエスト（spreadsheet_idを自動付与）
   async function gasPost(body) {
     var res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(Object.assign({ spreadsheet_id: SPREADSHEET_ID }, body))
     });
     return await res.json();
   }
@@ -272,7 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== PC用パスワード設定 ====================
   // ★このパスワードを変更することでPC用URLのパスワードを変更できます
-  var PC_PASSWORD = 'kmj11111';
+  var PC_PASSWORD = '1234';
 
   // URLパラメータからパスワードを取得（例: index.html?pw=1234）
   var urlParams = new URLSearchParams(window.location.search);
@@ -344,15 +347,28 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
 
+  // 全角→半角変換ユーティリティ
+  function toHalfWidth(str) {
+    return str.replace(/[！-～]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/　/g, ' ');
+  }
+  function normalizeInput(id) {
+    var el = document.getElementById(id);
+    var v = toHalfWidth(el.value);
+    if (el.value !== v) el.value = v;
+  }
+
   document.getElementById('itemCodeInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') confirmItemCode();
+    if (e.key === 'Enter') { normalizeInput('itemCodeInput'); confirmItemCode(); }
   });
+  document.getElementById('itemCodeInput').addEventListener('change', function() { normalizeInput('itemCodeInput'); });
   document.getElementById('warehouseCodeInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') addItem();
+    if (e.key === 'Enter') { normalizeInput('warehouseCodeInput'); addItem(); }
   });
+  document.getElementById('warehouseCodeInput').addEventListener('change', function() { normalizeInput('warehouseCodeInput'); });
   document.getElementById('stockSearchInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') searchStock();
+    if (e.key === 'Enter') { normalizeInput('stockSearchInput'); searchStock(); }
   });
+  document.getElementById('stockSearchInput').addEventListener('change', function() { normalizeInput('stockSearchInput'); });
 
   // 初期フォーカス
   if (isPCMode) {
@@ -615,9 +631,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!code) return;
 
     var el = document.getElementById('stockResult');
+    el.innerHTML = '<p style="color:#888; padding:10px;">在庫データ更新中...</p>';
+
+    // 検索ボタン押下のたびに最新データを取得してキャッシュ更新
+    await loadInventoryCache();
+
     el.innerHTML = '<p style="color:#888; padding:10px;">検索中...</p>';
 
-    // ① キャッシュから検索（GAS呼び出しなし・即時）
+    // キャッシュから即時検索
     var prefix = code.substring(0, 5);
     var exactData = cacheSearchByItemCode(code);
     var similarData = cacheSearchSimilar(prefix, code);
@@ -810,4 +831,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </body>
 </html>
-
