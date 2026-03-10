@@ -64,9 +64,23 @@
     </div>
     <div style="margin-bottom:14px;">
       <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">会場ID（スプレッドシートID）</label>
-      <input type="text" id="loginSheetId" placeholder="スプレッドシートIDを入力"
-             style="width:100%; padding:11px 12px; border:2px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;"
-             autocomplete="off" spellcheck="false" inputmode="url">
+      <div style="display:flex; gap:8px; align-items:stretch;">
+        <input type="text" id="loginSheetId" placeholder="スプレッドシートIDを入力"
+               style="flex:1; padding:11px 12px; border:2px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;"
+               autocomplete="off" spellcheck="false" inputmode="url">
+        <button id="btnLoginQR" title="QRコードで読み込む"
+                style="padding:0 14px; background:#2471a3; color:white; border:none; border-radius:6px; cursor:pointer; font-size:20px; flex-shrink:0;">
+          📷
+        </button>
+      </div>
+      <!-- ログイン用カメラエリア -->
+      <div id="loginCameraArea" style="display:none; margin-top:10px;">
+        <div id="login-qr-reader" style="width:100%; border-radius:8px; overflow:hidden;"></div>
+        <button id="btnLoginStopCamera"
+                style="margin-top:8px; width:100%; padding:8px; background:#e74c3c; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">
+          ✕ カメラを閉じる
+        </button>
+      </div>
     </div>
     <div style="margin-bottom:20px;">
       <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">パスワード</label>
@@ -268,6 +282,52 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('mainApp').style.display = 'block';
     // ヘッダーに会場名を表示（モード初期化後に追記）
     document.getElementById('loginVenueName') && (document.getElementById('loginVenueName').textContent = name);
+  }
+
+  // ==================== ログイン画面QRスキャン ====================
+  var loginQrCode = null;
+
+  document.getElementById('btnLoginQR').addEventListener('click', function() {
+    var area = document.getElementById('loginCameraArea');
+    if (area.style.display === 'none') {
+      area.style.display = 'block';
+      loginQrCode = new Html5Qrcode('login-qr-reader', { verbose: false });
+      loginQrCode.start(
+        { facingMode: 'environment' },
+        { fps: 15, qrbox: { width: 280, height: 280 }, formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ] },
+        function(decodedText) {
+          // スキャン成功：テキストをそのまま会場IDフィールドにセット
+          document.getElementById('loginSheetId').value = decodedText.trim();
+          stopLoginCamera();
+          document.getElementById('loginPassword').focus();
+        },
+        function() {}
+      ).catch(function(e) {
+        document.getElementById('loginError').textContent = '❌ カメラの起動に失敗しました: ' + e;
+        document.getElementById('loginError').style.display = 'block';
+        area.style.display = 'none';
+      });
+    } else {
+      stopLoginCamera();
+    }
+  });
+
+  document.getElementById('btnLoginStopCamera').addEventListener('click', stopLoginCamera);
+
+  function stopLoginCamera() {
+    var area = document.getElementById('loginCameraArea');
+    if (loginQrCode) {
+      loginQrCode.stop().then(function() {
+        loginQrCode.clear();
+        loginQrCode = null;
+        area.style.display = 'none';
+      }).catch(function() {
+        loginQrCode = null;
+        area.style.display = 'none';
+      });
+    } else {
+      area.style.display = 'none';
+    }
   }
 
   document.getElementById('btnLogin').addEventListener('click', doLogin);
