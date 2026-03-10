@@ -54,6 +54,39 @@
 </head>
 <body>
 
+<!-- ===== ログイン画面 ===== -->
+<div id="loginScreen" style="min-height:100vh; background:#f0f4f8; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:white; border-radius:12px; padding:36px 32px; width:100%; max-width:420px; box-shadow:0 4px 24px rgba(0,0,0,0.12);">
+    <div style="text-align:center; margin-bottom:28px;">
+      <div style="font-size:48px; margin-bottom:8px;">📦</div>
+      <h1 style="font-size:20px; font-weight:bold; color:#2c3e50;">イベント販売管理システム</h1>
+      <p style="font-size:13px; color:#888; margin-top:4px;">会場IDとパスワードでログインしてください</p>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">会場ID（スプレッドシートID）</label>
+      <input type="text" id="loginSheetId" placeholder="スプレッドシートIDを入力"
+             style="width:100%; padding:11px 12px; border:2px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;"
+             autocomplete="off" spellcheck="false" inputmode="url">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:13px; font-weight:bold; color:#555; margin-bottom:4px;">パスワード</label>
+      <input type="password" id="loginPassword" placeholder="パスワードを入力"
+             style="width:100%; padding:11px 12px; border:2px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;">
+    </div>
+    <div id="loginError" style="display:none; padding:10px 12px; background:#fdecea; border:1px solid #e74c3c; border-radius:6px; color:#c0392b; font-size:13px; margin-bottom:16px;"></div>
+    <button id="btnLogin" style="width:100%; padding:13px; background:#2471a3; color:white; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">
+      ログイン
+    </button>
+    <div id="loginSpinner" style="display:none; text-align:center; margin-top:16px; color:#888; font-size:13px;">
+      <div style="width:28px; height:28px; border:4px solid #e0e0e0; border-top-color:#2471a3; border-radius:50%; animation:spin 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:8px;"></div>
+      認証中...
+    </div>
+  </div>
+</div>
+
+<!-- ===== メイン画面（ログイン後に表示） ===== -->
+<div id="mainApp" style="display:none;">
+
 <div class="header">
   <span>📦 イベント販売管理システム</span>
   <span id="cacheStatus" style="font-size:12px; margin-right:12px; color:rgba(255,255,255,0.6);">読み込み中...</span><span id="currentTime" style="font-size:13px;"></span>
@@ -207,8 +240,97 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ==================== GAS API設定 ====================
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbz3BT9Q4nfAS59_6i4E9Q3TtQa8TxhV4VlQb97eWjE45GVykgT8S72jRvNu4sLq6vGZKw/exec';
-  // ★イベントごとに使用するスプレッドシートIDをここに設定
-  var SPREADSHEET_ID = '1ugBsV9ttsmLrCS1JpGm4KxBJS6rrN33qkUuPniuKrJg';
+  // ログイン後にセットされる（固定値は不要）
+  var SPREADSHEET_ID = '';
+
+  // ==================== ログイン処理 ====================
+  // セッションに保存済みのログイン情報を復元
+  (function restoreSession() {
+    var saved = sessionStorage.getItem('pos_login');
+    if (saved) {
+      try {
+        var data = JSON.parse(saved);
+        if (data.sid && data.name) {
+          SPREADSHEET_ID = data.sid;
+          showMainApp(data.sid, data.name);
+          initMainApp();
+          return;
+        }
+      } catch(e) {}
+    }
+  })();
+
+  function showMainApp(sid, name) {
+    SPREADSHEET_ID = sid;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    // ヘッダーに会場名を表示（モード初期化後に追記）
+    document.getElementById('loginVenueName') && (document.getElementById('loginVenueName').textContent = name);
+  }
+
+  document.getElementById('btnLogin').addEventListener('click', doLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('loginSheetId').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('loginPassword').focus();
+  });
+
+  async function doLogin() {
+    var sid = document.getElementById('loginSheetId').value.trim();
+    var pw  = document.getElementById('loginPassword').value;
+    var errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+
+    if (!sid) { showLoginError('会場IDを入力してください'); return; }
+    if (!pw)  { showLoginError('パスワードを入力してください'); return; }
+
+    document.getElementById('loginSpinner').style.display = 'block';
+    document.getElementById('btnLogin').disabled = true;
+
+    try {
+      var url = GAS_URL + '?action=validateLogin&spreadsheet_id=' + encodeURIComponent(sid) + '&password=' + encodeURIComponent(pw);
+      var res  = await fetch(url);
+      var data = await res.json();
+
+      if (data.status === 'ok') {
+        // ログイン成功：セッションに保存
+        sessionStorage.setItem('pos_login', JSON.stringify({ sid: sid, name: data.data.name }));
+        showMainApp(sid, data.data.name);
+        // メインアプリ初期化
+        initMainApp();
+      } else {
+        showLoginError(data.message || 'ログインに失敗しました');
+      }
+    } catch(e) {
+      showLoginError('通信エラーが発生しました。接続を確認してください。');
+    } finally {
+      document.getElementById('loginSpinner').style.display = 'none';
+      document.getElementById('btnLogin').disabled = false;
+    }
+  }
+
+  function showLoginError(msg) {
+    var el = document.getElementById('loginError');
+    el.textContent = '❌ ' + msg;
+    el.style.display = 'block';
+  }
+
+  // メインアプリの初期化（ログイン完了後に実行）
+  function initMainApp() {
+    // PCパスワード判定
+    var urlParams2 = new URLSearchParams(window.location.search);
+    var isPCMode2 = urlParams2.get('pw') === PC_PASSWORD;
+    // isPCModeを上書き（すでに宣言済みのため再代入）
+    isPCMode = isPCMode2;
+    setupTabs();
+    loadInventoryCache();
+    if (isPCMode) {
+      document.getElementById('itemCodeInput').focus();
+    } else {
+      document.getElementById('stockSearchInput').focus();
+    }
+  }
 
   // GAS GETリクエスト
   async function gasGet(action, params) {
@@ -291,47 +413,43 @@ document.addEventListener('DOMContentLoaded', function() {
   var urlParams = new URLSearchParams(window.location.search);
   var isPCMode = urlParams.get('pw') === PC_PASSWORD;
 
-  // switchTabをグローバルに公開（タブのonclickより先に定義が必要）
+  // switchTabをグローバルに公開
   window.switchTab = switchTab;
 
-  // ==================== タブ初期化 ====================
-  var tabBar = document.getElementById('tabBar');
-  if (isPCMode) {
-    // PCモード：会計・在庫確認・会計履歴 すべて表示
-    tabBar.innerHTML =
-      '<button class="tab active" onclick="switchTab(\'pos\')">🛒 会計</button>' +
-      '<button class="tab" onclick="switchTab(\'stock\')">🔍 在庫確認</button>' +
-      '<button class="tab" onclick="switchTab(\'history\')">📋 会計履歴</button>';
-    document.getElementById('tab-pos').classList.remove('hidden');
-    document.getElementById('tab-stock').classList.add('hidden');
-    document.getElementById('tab-history').classList.add('hidden');
-    // ヘッダ・タブにPCモード色を適用
-    document.querySelector('.header').classList.add('mode-pc');
-    document.getElementById('tabBar').classList.add('mode-pc');
-    // ヘッダにPCモードバッジを表示
-    document.querySelector('.header span').insertAdjacentHTML(
-      'afterend',
-      '<span style="background:rgba(255,255,255,0.25);color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">💻 PCモード</span>'
-    );
-    // PCモードではカメラスキャンボタンを非表示
-    document.getElementById('btnToggleCamera').style.display = 'none';
-  } else {
-    // スマホモード：在庫確認タブのみ表示
-    tabBar.innerHTML =
-      '<button class="tab active" onclick="switchTab(\'stock\')">🔍 在庫確認</button>';
-    document.getElementById('tab-pos').classList.add('hidden');
-    document.getElementById('tab-stock').classList.remove('hidden');
-    document.getElementById('tab-history').classList.add('hidden');
-    // ヘッダ・タブにスマホモード色を適用
-    document.querySelector('.header').classList.add('mode-sp');
-    document.getElementById('tabBar').classList.add('mode-sp');
-    // ヘッダにスマホモードバッジを表示
-    document.querySelector('.header span').insertAdjacentHTML(
-      'afterend',
-      '<span style="background:rgba(255,255,255,0.25);color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">📱 スマホモード</span>'
-    );
+  // ==================== タブ初期化（ログイン後に呼ばれる） ====================
+  function setupTabs() {
+    var tabBar = document.getElementById('tabBar');
+    document.querySelector('.header').classList.remove('mode-pc','mode-sp');
+    document.getElementById('tabBar').classList.remove('mode-pc','mode-sp');
+    if (isPCMode) {
+      tabBar.innerHTML =
+        '<button class="tab active" onclick="switchTab(\'pos\')">🛒 会計</button>' +
+        '<button class="tab" onclick="switchTab(\'stock\')">🔍 在庫確認</button>' +
+        '<button class="tab" onclick="switchTab(\'history\')">📋 会計履歴</button>';
+      document.getElementById('tab-pos').classList.remove('hidden');
+      document.getElementById('tab-stock').classList.add('hidden');
+      document.getElementById('tab-history').classList.add('hidden');
+      document.querySelector('.header').classList.add('mode-pc');
+      document.getElementById('tabBar').classList.add('mode-pc');
+      document.querySelector('.header span').insertAdjacentHTML(
+        'afterend',
+        '<span style="background:rgba(255,255,255,0.25);color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">💻 PCモード</span>'
+      );
+      document.getElementById('btnToggleCamera').style.display = 'none';
+    } else {
+      tabBar.innerHTML =
+        '<button class="tab active" onclick="switchTab(\'stock\')">🔍 在庫確認</button>';
+      document.getElementById('tab-pos').classList.add('hidden');
+      document.getElementById('tab-stock').classList.remove('hidden');
+      document.getElementById('tab-history').classList.add('hidden');
+      document.querySelector('.header').classList.add('mode-sp');
+      document.getElementById('tabBar').classList.add('mode-sp');
+      document.querySelector('.header span').insertAdjacentHTML(
+        'afterend',
+        '<span style="background:rgba(255,255,255,0.25);color:white;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:10px;">📱 スマホモード</span>'
+      );
+    }
   }
-
   // ==================== 状態管理 ====================
   var cart = [];
   var pendingItemCode = null;
@@ -393,15 +511,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.key === 'Enter') { normalizeInput('stockSearchInput'); searchStock(); }
   });
 
-  // 初期フォーカス
-  if (isPCMode) {
-    document.getElementById('itemCodeInput').focus();
-  } else {
-    document.getElementById('stockSearchInput').focus();
-  }
-
-  // 起動時に在庫キャッシュを読み込む
-  loadInventoryCache();
+  // ※ 初期フォーカス・キャッシュ読み込みはログイン後の initMainApp() で実行
 
   // ==================== タブ切り替え ====================
   function switchTab(tab) {
@@ -865,5 +975,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 }); // DOMContentLoaded終わり
 </script>
+</div><!-- /mainApp -->
 </body>
 </html>
