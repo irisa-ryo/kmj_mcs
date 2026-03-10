@@ -7,16 +7,27 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans', sans-serif; background: #f0f4f8; }
-  .header { background: #2c3e50; color: white; padding: 12px 20px; }
+  .header { background: #8e44ad; color: white; padding: 12px 20px; }
   .content { padding: 20px; max-width: 700px; margin: 0 auto; }
   .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  label { display: block; font-size: 13px; font-weight: bold; color: #555; margin-bottom: 4px; }
+  input[type=text] { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+  input[type=text]:focus { border-color: #8e44ad; outline: none; }
+  input[type=text].valid   { border-color: #27ae60; background: #f0fff4; }
+  input[type=text].invalid { border-color: #e74c3c; background: #fff5f5; }
   input[type=file] { margin: 10px 0; }
-  button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; margin-right: 10px; }
-  .btn-primary { background: #3498db; color: white; }
-  .btn-success { background: #27ae60; color: white; }
-  pre { margin-top: 20px; padding: 12px; background: #f4f4f4; border-radius: 6px; min-height: 60px; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
+  button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; margin-right: 8px; margin-bottom: 8px; }
+  .btn-primary  { background: #3498db; color: white; }
+  .btn-success  { background: #27ae60; color: white; }
+  .btn-purple   { background: #8e44ad; color: white; }
+  .btn-disabled { background: #bdc3c7; color: white; cursor: not-allowed; }
+  pre { margin-top: 16px; padding: 12px; background: #f4f4f4; border-radius: 6px; min-height: 60px; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
   .locked { text-align: center; padding: 60px 20px; color: #e74c3c; font-size: 18px; }
   .hidden { display: none; }
+  .sheet-status { font-size: 13px; margin-top: 4px; min-height: 18px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+  .badge-ok  { background: #eafaf1; color: #1e8449; border: 1px solid #27ae60; }
+  .badge-err { background: #fdecea; color: #c0392b; border: 1px solid #e74c3c; }
 </style>
 </head>
 <body>
@@ -31,16 +42,34 @@
   </div>
 
   <div id="mainContent" class="hidden">
+
+    <!-- STEP1: スプレッドシート指定 -->
     <div class="card">
-      <h2 style="margin-bottom:12px;">在庫CSVアップロード</h2>
+      <h3 style="margin-bottom:12px;">STEP 1　アップロード先のスプレッドシートを指定</h3>
+      <label for="inputSheetId">スプレッドシートID</label>
+      <input type="text" id="inputSheetId" placeholder="例: 1RxMbVPMa0FrD_sCf6_eHVsqWa8rdFWbWdfQwY4l_h4Y"
+             autocomplete="off" spellcheck="false">
+      <div class="sheet-status" id="sheetStatus"></div>
+      <div style="margin-top:8px;">
+        <button class="btn-purple" id="btnValidate">🔍 スプレッドシートを確認</button>
+        <button class="btn-primary" id="btnInitSheet">⚙️ シートを初期化（新規イベント時）</button>
+      </div>
+    </div>
+
+    <!-- STEP2: CSVアップロード -->
+    <div class="card">
+      <h3 style="margin-bottom:12px;">STEP 2　在庫CSVをアップロード</h3>
       <p style="margin-bottom:12px; color:#666; font-size:14px;">
-        CSVフォーマット（1行目はヘッダ行）：<br>
-        <code>店舗コード,店舗名,品番,品名,数量,商品単価</code>
+        CSVフォーマット（1行目はヘッダ行・順序厳守）：<br>
+        <code style="background:#f4f4f4; padding:2px 6px; border-radius:3px;">店舗コード,店舗名,品番,品名,数量,商品単価</code>
+      </p>
+      <p style="margin-bottom:12px; color:#e74c3c; font-size:13px;">
+        ⚠️ アップロードすると既存の在庫データはすべてリセットされ、CSVの内容で上書きされます。
       </p>
       <input type="file" id="csvFile" accept=".csv"><br>
-      <button class="btn-success" id="btnUpload">⬆️ アップロード</button>
-      <button class="btn-primary" id="btnTest">接続テスト</button>
+      <button class="btn-success" id="btnUpload">⬆️ アップロード（既存データをリセットして登録）</button>
     </div>
+
     <pre id="log">ここにログが表示されます</pre>
   </div>
 </div>
@@ -48,24 +77,21 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-
-// ==================== パスワード設定 ====================
-  var UPLOAD_PASSWORD = 'kmj11111';
+  var UPLOAD_PASSWORD = '1234';
   var urlParams = new URLSearchParams(window.location.search);
-  var isAllowed = urlParams.get('pw') === UPLOAD_PASSWORD;
-
-  if (!isAllowed) {
+  if (urlParams.get('pw') !== UPLOAD_PASSWORD) {
     document.getElementById('lockedMessage').classList.remove('hidden');
     return;
   }
-  document.getElementById('lockedMessage').classList.add('hidden');
   document.getElementById('mainContent').classList.remove('hidden');
 
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbz3BT9Q4nfAS59_6i4E9Q3TtQa8TxhV4VlQb97eWjE45GVykgT8S72jRvNu4sLq6vGZKw/exec';
 
   async function gasGet(action, params) {
     var url = GAS_URL + '?action=' + action;
-    if (params) Object.keys(params).forEach(function(k) { url += '&' + k + '=' + encodeURIComponent(params[k]); });
+    if (params) Object.keys(params).forEach(function(k) {
+      url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    });
     var res = await fetch(url);
     return await res.json();
   }
@@ -75,29 +101,60 @@ document.addEventListener('DOMContentLoaded', function() {
     return await res.json();
   }
 
-  var log = document.getElementById('log');
-  document.getElementById('btnTest').addEventListener('click', testConnection);
-  document.getElementById('btnUpload').addEventListener('click', uploadCSV);
+  function getSheetId() {
+    return document.getElementById('inputSheetId').value.trim();
+  }
 
+  var log = document.getElementById('log');
   function addLog(msg) {
     if (log.textContent === 'ここにログが表示されます') log.textContent = '';
     log.textContent += msg + '\n';
   }
+  function clearLog() { log.textContent = ''; }
 
-  async function testConnection() {
-    log.textContent = '';
-    addLog('接続テスト中...');
-    try {
-      var result = await gasGet('ping');
-      if (result.status !== 'ok') throw new Error('GASから異常レスポンス');
-      addLog('✅ Google Sheets接続成功！');
-    } catch(e) {
-      addLog('❌ 接続失敗: ' + e.message);
+  // ==================== スプレッドシート確認 ====================
+  document.getElementById('btnValidate').addEventListener('click', async function() {
+    var sid = getSheetId();
+    if (!sid) { alert('スプレッドシートIDを入力してください'); return; }
+    clearLog();
+    addLog('スプレッドシートを確認中...');
+    var result = await gasGet('validateSpreadsheet', { spreadsheet_id: sid });
+    var statusEl = document.getElementById('sheetStatus');
+    var inputEl  = document.getElementById('inputSheetId');
+    if (result.status === 'ok') {
+      statusEl.innerHTML = '<span class="badge badge-ok">✅ 接続成功: ' + result.data.name + '</span>';
+      inputEl.classList.add('valid'); inputEl.classList.remove('invalid');
+      addLog('✅ スプレッドシート確認成功: ' + result.data.name);
+    } else {
+      statusEl.innerHTML = '<span class="badge badge-err">❌ ' + result.message + '</span>';
+      inputEl.classList.add('invalid'); inputEl.classList.remove('valid');
+      addLog('❌ エラー: ' + result.message);
     }
-  }
+  });
 
-  async function uploadCSV() {
-    log.textContent = '';
+  // ==================== シート初期化 ====================
+  document.getElementById('btnInitSheet').addEventListener('click', async function() {
+    var sid = getSheetId();
+    if (!sid) { alert('スプレッドシートIDを入力してください'); return; }
+    if (!confirm('スプレッドシートに必要なシート（inventory / transactions / transaction_items）を自動生成します。\n既存データは保持されます。よろしいですか？')) return;
+    clearLog();
+    addLog('シートを初期化中...');
+    var result = await gasPost({ action: 'initSpreadsheet', spreadsheet_id: sid });
+    if (result.status === 'ok') {
+      addLog('✅ 初期化完了！');
+      if (result.data.created.length > 0)  addLog('  新規作成: ' + result.data.created.join(', '));
+      if (result.data.existing.length > 0) addLog('  既存（スキップ）: ' + result.data.existing.join(', '));
+    } else {
+      addLog('❌ 初期化失敗: ' + result.message);
+    }
+  });
+
+  // ==================== CSVアップロード ====================
+  document.getElementById('btnUpload').addEventListener('click', async function() {
+    var sid = getSheetId();
+    if (!sid) { alert('STEP 1でスプレッドシートIDを入力してください'); return; }
+
+    clearLog();
     var file = document.getElementById('csvFile').files[0];
     if (!file) { addLog('❌ ファイルを選択してください'); return; }
     addLog('ファイル読み込み中: ' + file.name);
@@ -110,53 +167,85 @@ document.addEventListener('DOMContentLoaded', function() {
     var lines = text.trim().split('\n');
     if (lines.length < 2) { addLog('❌ データがありません'); return; }
 
-    addLog('ヘッダ: ' + lines[0]);
+    // ヘッダー行バリデーション（カラム数・並び順）
+    var requiredHeaders = ['店舗コード','店舗名','品番','品名','数量','商品単価'];
+    var headerLine = lines[0].split(',').map(function(h){ return h.trim().replace(/^"|"$/g,''); });
+    addLog('ヘッダ確認: ' + headerLine.join(', '));
+    if (headerLine.length !== requiredHeaders.length) {
+      addLog('❌ カラム数エラー: ' + headerLine.length + '列（必要: ' + requiredHeaders.length + '列）');
+      addLog('  必要なカラム順: ' + requiredHeaders.join(', '));
+      return;
+    }
+    var headerMismatch = requiredHeaders.filter(function(h, i){ return headerLine[i] !== h; });
+    if (headerMismatch.length > 0) {
+      addLog('❌ ヘッダー名または並び順が正しくありません');
+      addLog('  期待値: ' + requiredHeaders.join(', '));
+      addLog('  実際値: ' + headerLine.join(', '));
+      return;
+    }
+    addLog('✅ ヘッダー形式OK');
     addLog('データ行数: ' + (lines.length - 1) + '行');
 
+    // データ行パース
     var rows = [], errors = [];
     for (var i = 1; i < lines.length; i++) {
       var line = lines[i].trim();
       if (!line) continue;
       var cols = parseCSVLine(line);
-      // 店舗コード,店舗名,品番,品名,数量,商品単価 の6列
-      if (cols.length < 6) { errors.push('行' + (i+1) + ': カラム数不足（6列必要）→ ' + line); continue; }
-
-      var store_code = cols[0].trim().replace(/^"|"$/g, '');
-      var store_name = cols[1].trim().replace(/^"|"$/g, '');
-      var item_code  = cols[2].trim().replace(/^"|"$/g, '');
-      var item_name  = cols[3].trim().replace(/^"|"$/g, '');
-      var qty        = parseInt(cols[4].trim().replace(/^"|"$/g, ''));
-      var price      = parseInt(cols[5].trim().replace(/^"|"$/g, ''));
-
+      if (cols.length < 6) { errors.push('行' + (i+1) + ': カラム数不足 → ' + line); continue; }
+      var store_code = cols[0].trim().replace(/^"|"$/g,'');
+      var store_name = cols[1].trim().replace(/^"|"$/g,'');
+      var item_code  = cols[2].trim().replace(/^"|"$/g,'');
+      var item_name  = cols[3].trim().replace(/^"|"$/g,'');
+      var qty        = parseInt(cols[4].trim().replace(/^"|"$/g,''));
+      var price      = parseInt(cols[5].trim().replace(/^"|"$/g,''));
       if (isNaN(qty) || isNaN(price)) { errors.push('行' + (i+1) + ': 数値変換エラー'); continue; }
-      rows.push({ store_code: store_code, store_name: store_name, item_code: item_code, item_name: item_name, quantity: qty, unit_price: price });
+      rows.push({ store_code: store_code, store_name: store_name, item_code: item_code,
+                  item_name: item_name, quantity: qty, unit_price: price });
     }
 
-    if (errors.length > 0) { addLog('\n⚠️ エラー行:'); errors.forEach(function(e) { addLog('  ' + e); }); }
+    if (errors.length > 0) {
+      addLog('\n⚠️ エラー行:');
+      errors.forEach(function(e){ addLog('  ' + e); });
+    }
     if (rows.length === 0) { addLog('❌ アップロードできるデータがありません'); return; }
 
-    // 重複除去（店舗コード + 品番 をキーに）
+    // 重複除去
     var uniqueMap = {};
-    rows.forEach(function(r) { uniqueMap[r.store_code + '___' + r.item_code] = r; });
+    rows.forEach(function(r){ uniqueMap[r.store_code + '___' + r.item_code] = r; });
     var uniqueRows = Object.values(uniqueMap);
-    if (uniqueRows.length < rows.length) {
+    if (uniqueRows.length < rows.length)
       addLog('⚠️ 重複除去: ' + rows.length + '件 → ' + uniqueRows.length + '件');
-    }
 
-    addLog('\nアップロード開始: ' + uniqueRows.length + '件');
-    addLog('プレビュー（先頭3件）:');
-    uniqueRows.slice(0, 3).forEach(function(r, i) { addLog('  ' + (i+1) + ': ' + JSON.stringify(r)); });
+    addLog('\nプレビュー（先頭3件）:');
+    uniqueRows.slice(0, 3).forEach(function(r, i){ addLog('  ' + (i+1) + ': ' + JSON.stringify(r)); });
 
-    var chunkSize = 50, successCount = 0;
+    if (!confirm(uniqueRows.length + '件のデータをアップロードします。\n⚠️ 既存の在庫データはすべてリセットされます。\nよろしいですか？')) return;
+
+    addLog('\nアップロード中（既存データをリセット）...');
+
+    // 50件ずつ送信（初回だけresetAndUploadInventory、以降はappend相当の処理はGAS側で対応済）
+    // 実際には全件一括でGASに送ってGAS側でリセット→一括挿入
+    var chunkSize = 200;
+    var firstChunk = true;
+    var successCount = 0;
     for (var j = 0; j < uniqueRows.length; j += chunkSize) {
       var chunk = uniqueRows.slice(j, j + chunkSize);
-      var result = await gasPost({ action: 'upsertInventory', rows: chunk });
-      if (result.status !== 'ok') { addLog('❌ エラー: ' + (result.message || JSON.stringify(result))); return; }
-      successCount += chunk.length;
-      addLog('進捗: ' + successCount + '/' + uniqueRows.length + '件完了');
+      var result;
+      if (firstChunk) {
+        // 初回：リセット＋挿入
+        result = await gasPost({ action: 'resetAndUploadInventory', spreadsheet_id: sid, rows: uniqueRows });
+        firstChunk = false;
+        successCount = uniqueRows.length;
+        break; // 全件を一括送信したのでループ終了
+      }
     }
-    addLog('\n✅ アップロード完了！合計' + successCount + '件登録しました');
-  }
+    if (result.status !== 'ok') {
+      addLog('❌ エラー: ' + (result.message || JSON.stringify(result)));
+      return;
+    }
+    addLog('✅ アップロード完了！合計 ' + successCount + ' 件登録しました');
+  });
 
   function parseCSVLine(line) {
     var result = [], current = '', inQuotes = false;
