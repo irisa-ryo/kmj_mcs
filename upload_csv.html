@@ -54,6 +54,13 @@
         <button class="btn-purple" id="btnValidate">🔍 スプレッドシートを確認</button>
         <button class="btn-primary" id="btnInitSheet">⚙️ シートを初期化（新規イベント時）</button>
       </div>
+      <hr style="margin:16px 0; border:none; border-top:1px solid #eee;">
+      <label for="inputPassword">ログインパスワード設定（pos_system ログイン時に使用）</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="password" id="inputPassword" placeholder="任意のパスワードを入力" style="margin-bottom:0; flex:1;">
+        <button class="btn-purple" id="btnSetPassword" style="white-space:nowrap; margin:0;">🔑 パスワードを設定</button>
+      </div>
+      <div class="sheet-status" id="passwordStatus"></div>
     </div>
 
     <!-- STEP2: CSVアップロード -->
@@ -128,6 +135,26 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
       statusEl.innerHTML = '<span class="badge badge-err">❌ ' + result.message + '</span>';
       inputEl.classList.add('invalid'); inputEl.classList.remove('valid');
+      addLog('❌ エラー: ' + result.message);
+    }
+  });
+
+  // ==================== パスワード設定 ====================
+  document.getElementById('btnSetPassword').addEventListener('click', async function() {
+    var sid = getSheetId();
+    var pw  = document.getElementById('inputPassword').value.trim();
+    if (!sid)  { alert('スプレッドシートIDを入力してください'); return; }
+    if (!pw)   { alert('パスワードを入力してください'); return; }
+    clearLog();
+    addLog('パスワードを設定中...');
+    var result = await gasPost({ action: 'setPassword', spreadsheet_id: sid, password: pw });
+    var statusEl = document.getElementById('passwordStatus');
+    if (result.status === 'ok') {
+      statusEl.innerHTML = '<span class="badge badge-ok">✅ パスワードを設定しました</span>';
+      addLog('✅ パスワードの設定が完了しました');
+      document.getElementById('inputPassword').value = '';
+    } else {
+      statusEl.innerHTML = '<span class="badge badge-err">❌ ' + result.message + '</span>';
       addLog('❌ エラー: ' + result.message);
     }
   });
